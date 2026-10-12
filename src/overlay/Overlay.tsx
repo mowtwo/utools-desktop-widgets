@@ -462,6 +462,8 @@ export default function Overlay() {
 
   if (!payload) return null
   const width = payload.bounds.width
+  /** 还没完成的待办条数：收起时显示在小把手上 */
+  const todoCount = payload.items.reduce((n, it) => n + (it.type === 'todo' ? it.lines.filter((l) => !l.done).length : 0), 0)
 
   return (
     <>
@@ -528,6 +530,14 @@ export default function Overlay() {
           onMouseEnter={() => reveal(true, 'handle-hover')}
           onClick={() => reveal(true, 'handle-click')}
         >
+          {todoCount > 0 && (
+            <span
+              title={`还有 ${todoCount} 条待办`}
+              className="absolute -top-0.5 right-3 z-10 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] leading-none font-bold text-white shadow ring-1 ring-white/70"
+            >
+              {todoCount > 99 ? '99+' : todoCount}
+            </span>
+          )}
           {handleContent && (handleContent.text || handleContent.progress !== undefined) ? (
             // 挂件占用了把手（api.handle.set）：显示它的文字和进度
             <div className="relative flex h-5 min-w-14 items-center justify-center overflow-hidden rounded-full bg-neutral-900/75 px-2.5 text-[11px] font-medium whitespace-nowrap text-white shadow-[0_1px_4px_rgba(0,0,0,0.25)] transition group-hover:bg-neutral-900/90">

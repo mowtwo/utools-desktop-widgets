@@ -1,7 +1,7 @@
 // 桌面地毯窗口的宿主层：替代 desktop-rug 原生（Swift）部分
 // - 垫一个 window.webkit.messageHandlers.rug，让移植来的 rug.js 不用改通信代码
-// - 平时窗口完全点击穿透；只有编辑模式下才按 rug.js 报来的地毯轮廓接收鼠标
-// - 编辑模式在屏幕上方放一条工具栏：调整大小 / 旋转、换花样、摊平、复位、完成
+// - 按 rug.js 报来的地毯轮廓切换点击穿透：鼠标在地毯上就接收（随时可以直接拖、掀、折），其余点击落到桌面
+// - 编辑模式：地毯浮到最上层，屏幕上方放一条工具栏：调整大小 / 旋转、换花样、摊平、复位、完成
 //   （原版靠按住 Option 进入缩放旋转，悬浮窗口拿不到可靠的按键状态，改成按钮切换）
 
 const bridge = window.rugBridge
@@ -132,15 +132,12 @@ bridge?.onEdit((on) => {
   probeFrames(on ? 'edit-on' : 'edit-off')
   setTimeout(() => probeFrames(on ? 'edit-on+3s' : 'edit-off+3s'), 3000)
   toolbar.style.display = on ? 'flex' : 'none'
-  if (!on) {
-    if (transform) setTransform(false, transformBtn)
-    accept = false
-  }
+  if (!on && transform) setTransform(false, transformBtn)
 })
 
-// 编辑模式下轮询光标：在地毯或工具栏上就接收鼠标，其余点击穿透
+// 轮询光标：在地毯上（编辑时还有工具栏）就接收鼠标，其余点击穿透
 setInterval(() => {
-  if (!bridge || !editing) return
+  if (!bridge) return
   const p = bridge.cursor()
   const x = p.x - originX
   const y = p.y - originY

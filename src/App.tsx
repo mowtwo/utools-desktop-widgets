@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { FOCUS_TODO_EVENT } from '@/lib/enter'
 import { Row } from '@/components/row'
+import { TodoSection } from '@/todo/todo-section'
 import { PingPage } from '@/pages/ping-page'
 import { RugPage } from '@/pages/rug-page'
 import { useLine } from '@/lib/use-line'
@@ -21,7 +22,6 @@ import {
   type HandlePosition,
   type LineMode,
   type LineState,
-  type TodoItem,
 } from '@/types/line'
 
 // 代码编辑器（CodeMirror）比较大，打开「挂件扩展」时才加载
@@ -43,9 +43,9 @@ function displayName(d: DisplayInfo, index: number) {
 }
 
 
-function ItemRow({ item }: { item: ContentItem | TodoItem }) {
+function ItemRow({ item }: { item: ContentItem }) {
   const services = window.services!
-  const path = item.type === 'note' || item.type === 'todo' ? null : item.path
+  const path = item.type === 'note' ? null : item.path
   return (
     <div
       className={cn('flex items-center gap-3 px-4 py-2', path && 'cursor-grab')}
@@ -64,13 +64,9 @@ function ItemRow({ item }: { item: ContentItem | TodoItem }) {
         ) : (
           <img src={item.icon} className="size-9 object-contain" />
         ))}
-      {(item.type === 'note' || item.type === 'todo') && (
+      {item.type === 'note' && (
         <span className="flex size-9 items-center justify-center rounded-md border bg-muted">
-          {item.type === 'todo' ? (
-            <ListTodo className="size-4 text-muted-foreground" />
-          ) : (
-            <StickyNote className="size-4 text-muted-foreground" />
-          )}
+          <StickyNote className="size-4 text-muted-foreground" />
         </span>
       )}
       <span className="min-w-0 flex-1 truncate text-sm">
@@ -155,7 +151,7 @@ function LinePage({ line }: { line: LineState }) {
     return () => window.removeEventListener(FOCUS_TODO_EVENT, onFocusTodo)
   }, [])
 
-  const content = line.items.filter((it): it is ContentItem | TodoItem => isContent(it) || it.type === 'todo')
+  const content = line.items.filter(isContent)
   const missing = line.displayId != null && !displays.some((d) => d.id === line.displayId)
 
   const capture = async () => {
@@ -351,7 +347,7 @@ function LinePage({ line }: { line: LineState }) {
             <ToggleGroupItem value="note" title="便签：单击复制">
               <StickyNote />
             </ToggleGroupItem>
-            <ToggleGroupItem value="todo" title="待办：点完成就自动销毁">
+            <ToggleGroupItem value="todo" title="待办：加到待办卡里">
               <ListTodo />
             </ToggleGroupItem>
           </ToggleGroup>
@@ -360,7 +356,7 @@ function LinePage({ line }: { line: LineState }) {
             value={note}
             maxLength={kind === 'todo' ? TODO_MAX : undefined}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={kind === 'todo' ? `写条待办（最多 ${TODO_MAX} 字），完成后自动销毁` : '写张便签挂上去'}
+            placeholder={kind === 'todo' ? `写条待办（最多 ${TODO_MAX} 字），加到「快速添加」的待办卡里` : '写张便签挂上去'}
           />
           <Button type="submit" disabled={!note.trim()}>
             挂上去
@@ -370,6 +366,8 @@ function LinePage({ line }: { line: LineState }) {
           也可以在 uTools 里粘贴图片、选中文字或文件后选「挂到晾衣绳」（文件夹会挂成可展开的衣架）；或者点绳子空白处加个夹子，再往夹子上挂东西
         </p>
       </section>
+
+      <TodoSection line={line} />
 
       <section className="rounded-xl border bg-card">
         <div className="flex items-center justify-between px-4 py-3">

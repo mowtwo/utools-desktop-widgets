@@ -1,5 +1,5 @@
 // 移植自 desktop-rug（https://github.com/josssphzhou/desktop-rug，commit 85e609f19ef1，MIT，Copyright (c) 2026 Joseph Zhou）。
-// 本项目的改动：createSurface 返回的 dispose 会主动交还 WebGL 上下文（见下方注释）。
+// 本项目的改动：createSurface 返回的 dispose 会主动交还 WebGL 上下文；着色器花样经 2D 画布中转给贴图（见下方注释）。
 
 // 地毯表面：Paper Shaders 的实时材质，外加一块 Canvas 画的波斯纹样。
 // 每种材质给出一张 canvas，布料网格每帧把它当贴图用，所以图案会跟着布一起弯折。
@@ -131,8 +131,23 @@ export function createSurface(id) {
     def.warmup ? 1 : def.speed, 0, 2,
   );
   if (def.warmup) setTimeout(() => mount.setSpeed(0), 2500);
+  // 本项目改动：地毯贴图不直接读 ShaderMount 的 WebGL 画布（跨 WebGL 上下文复制时好时坏，地毯会随机变黑），
+  // 先画到一块 2D 画布上，贴图只从这块 2D 画布读取；refresh() 在每次要更新贴图前同步一次
+  // 中转画布从一开始就固定为最终尺寸（ShaderMount 的最小像素比是 2）：贴图尺寸中途变化时，
+  // three.js 在 WebGL2 下分配的是固定大小的存储，按新尺寸上传会失败，地毯也会变黑
+  const src = mount.canvasElement;
+  const snap = document.createElement('canvas');
+  snap.width = TEX_W * 2;
+  snap.height = TEX_H * 2;
+  const snapCtx = snap.getContext('2d');
+  const refresh = () => {
+    if (!src.width || !src.height) return;
+    snapCtx.drawImage(src, 0, 0, snap.width, snap.height);
+  };
+  refresh();
   return {
-    canvas: mount.canvasElement,
+    canvas: snap,
+    refresh,
     animated: def.speed !== 0,
     // 静态材质的 noise 贴图异步加载，前一秒多刷新几次
     warmupMs: def.warmup ? 3000 : 1500,

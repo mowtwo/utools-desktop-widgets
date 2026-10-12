@@ -3,6 +3,7 @@
 // 本项目的改动：
 // - 渲染等级：quality 参数（high / medium / low）控制像素密度上限、阴影贴图尺寸、阴影模糊采样和抗锯齿
 // - 渲染器开启 preserveDrawingBuffer：透明窗口重新合成时保留上一帧，避免闪成空白
+// - setMaterial 复用已建好的花样，不再销毁重建；更新贴图前调用 surface.refresh() 把着色器画面同步到 2D 画布
 // 其余代码保持原样；与宿主的通信由 ../main.js 提供的 window.webkit.messageHandlers.rug 垫片转接。
 
 // 桌面地毯主程序：布料模拟（verlet 积分加距离约束）、渲染、鼠标交互、演示脚本。
@@ -571,15 +572,25 @@ rugGroup.add(front, back, side);
 scene.add(rugGroup);
 
 let materialId = MATERIAL_IDS.includes(params.get('material')) ? params.get('material') : 'persian';
+// 本项目改动：每种花样只创建一次、之后复用，不再销毁重建（反复新建 WebGL 上下文会让地毯随机变黑）
+const surfaceCache = new Map();
 function setMaterial(id) {
   if (!MATERIAL_IDS.includes(id)) return;
   materialId = id;
-  if (surface) surface.dispose();
-  if (surfaceTex) surfaceTex.dispose();
-  surface = createSurface(id);
-  surfaceTex = new THREE.CanvasTexture(surface.canvas);
-  surfaceTex.colorSpace = THREE.SRGBColorSpace;
-  surfaceTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  if (surface && surface.setLive) surface.setLive(false);
+  let cached = surfaceCache.get(id);
+  if (!cached) {
+    const s = createSurface(id);
+    const tex = new THREE.CanvasTexture(s.canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    cached = { surface: s, tex };
+    surfaceCache.set(id, cached);
+  }
+  surface = cached.surface;
+  surfaceTex = cached.tex;
+  surface.refresh?.();
+  surfaceTex.needsUpdate = true;
   frontMat.map = backMat.map = params.get('plain') ? null : surfaceTex;   // plain=1 时用纯色布检查光照
   frontMat.needsUpdate = backMat.needsUpdate = true;
   surfaceBorn = performance.now();
@@ -1428,10 +1439,10 @@ function loop(t) {
 
   // 动态材质只在有人碰地毯（掀、拖、鼠标停在上面）后的几秒里动，之后停下来不再渲染，省电
   const wantLive = !!(surface && surface.animated && (t < liveUntil || recorder || demoRunning));
-  if (surface && surface.setLive && wantLive !== surfaceLive) { surface.setLive(wantLive); surfaceLive = wantLive; if (!wantLive) { surfaceTex.needsUpdate = true; needsRender = true; } }
+  if (surface && surface.setLive && wantLive !== surfaceLive) { surface.setLive(wantLive); surfaceLive = wantLive; if (!wantLive) { surface.refresh?.(); surfaceTex.needsUpdate = true; needsRender = true; } }
   const animated = surface && (wantLive || t - surfaceBorn < surface.warmupMs);
   // 动态材质在地毯静止时按 30 帧刷新，省一半耗电；拖动和录制时每帧都刷新
-  if (animated && (phase !== 'idle' || mode !== null || recorder || (frameCount & 1) === 0)) { surfaceTex.needsUpdate = true; needsRender = true; }
+  if (animated && (phase !== 'idle' || mode !== null || recorder || (frameCount & 1) === 0)) { surface.refresh?.(); surfaceTex.needsUpdate = true; needsRender = true; }
   if (recorder) needsRender = true;   // 录制时每帧都画，否则录到被清空的画布
 
   const selAnimating = updateSel(now());

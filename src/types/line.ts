@@ -40,13 +40,26 @@ export interface WidgetItem extends ItemBase {
   data?: Record<string, unknown>
 }
 
-/** 快速便签：一条小待办，点完成就掉下去销毁 */
-export interface TodoItem extends ItemBase {
-  type: 'todo'
+export interface TodoLine {
+  id: string
   text: string
+  /** 已完成：划线显示，不会自动删除 */
+  done: boolean
 }
 
+export type TodoColor = 'amber' | 'rose' | 'sky' | 'emerald' | 'violet'
+
+/** 待办卡片：最多 TODO_LINES 行（已完成的也算）；勾选只标记完成，删除是单独的按钮 */
+export interface TodoItem extends ItemBase {
+  type: 'todo'
+  lines: TodoLine[]
+  color: TodoColor
+}
+
+/** 每行最多几个字 */
 export const TODO_MAX = 30
+/** 每张卡片最多几行 */
+export const TODO_LINES = 6
 
 /** 点绳子加的空夹子，等着挂东西 */
 export interface ClipItem extends ItemBase {
@@ -121,6 +134,8 @@ export interface LineState {
   rug: RugSettings
   /** 地毯正在编辑 */
   rugEditing: boolean
+  /** 快速添加待办的目标卡片；null 表示最新的一张 */
+  todoTarget: string | null
   items: LineItem[]
   extensions: WidgetExtension[]
 }

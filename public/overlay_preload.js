@@ -150,6 +150,17 @@ window.overlay = {
   focus() {
     utools.sendToParent('overlay:focus')
   },
+  /** 勾选 / 取消勾选待办卡片里的一行（只标记完成，不删除） */
+  todoToggle(cardId, lineId) {
+    utools.sendToParent('overlay:todo-toggle', cardId, lineId)
+  },
+  todoDelete(cardId, lineId) {
+    utools.sendToParent('overlay:todo-delete', cardId, lineId)
+  },
+  /** 一键完成整张卡片 */
+  todoComplete(cardId) {
+    utools.sendToParent('overlay:todo-complete', cardId)
+  },
   /** 用户拉下晾衣绳时：如果开了「滑出时获取焦点」，让悬浮层获得焦点（官方文档建议的保证渲染帧率的做法） */
   focusOnReveal() {
     utools.sendToParent('overlay:focus-on-reveal')

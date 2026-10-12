@@ -72,7 +72,14 @@ interface Window {
     saveExtension(ext: Omit<import('@/widget/protocol').WidgetExtension, 'id'> & { id?: string }): string
     removeExtension(id: string): void
     hangWidget(ext: string): void
-    addTodo(text: string): void
+    addTodo(text: string): boolean
+    addTodoLine(cardId: string, text: string): boolean
+    removeTodoLine(cardId: string, lineId: string): void
+    toggleTodoLine(cardId: string, lineId: string): void
+    completeTodoCard(cardId: string): void
+    newTodoCard(text?: string): void
+    setTodoTarget(id: string | null): void
+    setTodoColor(cardId: string, color: import('./line').TodoColor): void
     setDisplay(displayId: number | null): void
     setMaxItems(maxItems: number): void
     addImageData(dataUrl: string): void
@@ -104,6 +111,9 @@ interface Window {
     fillClip(clipId: string, source: 'files' | 'folder' | 'paste' | 'capture' | `widget:${string}`): void
     drop(files: FileList, x: number, clipId?: string): void
     addTodo(text: string, clipId?: string): void
+    todoToggle(cardId: string, lineId: string): void
+    todoDelete(cardId: string, lineId: string): void
+    todoComplete(cardId: string): void
     /** 让悬浮层获得键盘焦点（在夹子上直接打字时） */
     focus(): void
     focusOnReveal(): void

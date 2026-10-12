@@ -200,20 +200,6 @@ export function Pegged({
     return () => document.removeEventListener('pointerdown', close)
   }, [menuOpen])
 
-  /** 待办完成：晃一下，从夹子上掉下去，再真正取下 */
-  const fallAndRemove = () => {
-    kick(item.id, 4)
-    bodyRef.current?.animate(
-      [
-        { translate: '0 0', rotate: '0deg', opacity: 1 },
-        { translate: '0 260px', rotate: '18deg', opacity: 0 },
-      ],
-      { duration: 620, easing: 'cubic-bezier(.55,0,.85,.4)', fill: 'forwards' },
-    )
-    // 不等动画的 finish 事件：页面被判定为不可见时动画不推进，finish 永远不会来
-    setTimeout(() => window.overlay?.remove(item.id), 650)
-  }
-
   return (
     <div
       ref={rootRef}
@@ -254,7 +240,7 @@ export function Pegged({
                 onToast={onToast}
               />
             ) : item.type === 'todo' ? (
-              <TodoCard item={item} onDone={fallAndRemove} />
+              <TodoCard item={item} />
             ) : isFolder ? (
               <FolderHanger item={item as Extract<LineItem, { type: 'file' }>} open={menuOpen} setOpen={setMenuOpen} onDragOut={onDragOut} />
             ) : (

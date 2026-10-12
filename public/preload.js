@@ -67,8 +67,8 @@ const defaultState = {
     size: 56,
     /** 轮盘缩放比例 */
     wheelScale: 0.7,
-    /** none 不截图 / copy 复制 / hang 挂到晾衣绳 / both 复制并挂上 */
-    output: 'copy',
+    /** none 不截图 / copy 复制 / hang 挂到晾衣绳 / both 复制并挂上（默认：和晾衣绳联动） */
+    output: 'both',
     /** 提示音默认关，免得吵 */
     sound: false,
   },
@@ -85,6 +85,8 @@ const defaultState = {
   renderAnchor: true,
   /** 试验：用户拉下晾衣绳时让悬浮层获得焦点，换取正常的渲染帧率，代价是抢走当前窗口的键盘焦点 */
   focusOnReveal: false,
+  /** 快速添加待办的目标卡片 id；null 表示最新的一张 */
+  todoTarget: null,
   /** 开发模式下的诊断面板，默认关 */
   debugHud: false,
   /** 内置挂件扩展是否已写入过数据库（删掉后不再自动补回） */
@@ -125,6 +127,12 @@ function loadState() {
       if (saved.clock && !state.items.some((it) => it.type === 'clock')) state.items.push({ ...defaultState.items[0] })
       delete state.clock
     }
+    // 旧版本的待办是一张卡片一条：转成一张卡片多行
+    state.items = state.items.map((it) =>
+      it.type === 'todo' && !Array.isArray(it.lines)
+        ? { ...it, lines: it.text ? [{ id: it.id + '-1', text: it.text, done: false }] : [], color: it.color || 'amber' }
+        : it,
+    )
     // 旧版本的时钟类型改成「时钟」挂件扩展的实例
     state.items = state.items.map((it) => (it.type === 'clock' ? { ...it, type: 'widget', ext: 'clock' } : it))
     return state
@@ -184,10 +192,9 @@ function setRugEditing(on) {
     win.showInactive()
     win.moveTop()
   } else {
-    // 不在原窗口上推回最底层：blur() 在 macOS 上是先隐藏再放到底层，之后点击能到窗口、地毯却不再响应。
-    // 位置存在地毯页面的 localStorage，花样存在设置里，直接重建窗口最可靠，新窗口创建时本来就在最底层
-    closeRug('edit-done')
-    syncRug()
+    // 退出编辑：取消置顶，地毯照常可以直接拖动（不再用 blur() 推到底层）
+    win.setAlwaysOnTop(false)
+    win.setIgnoreMouseEvents(true, { forward: true })
   }
   emit()
 }
@@ -263,14 +270,14 @@ function presentRug(entry, via) {
   entry.shown = true
   const { win } = entry
   log('rug-shown', { via })
-  // 平时完全点击穿透：地毯只在编辑模式下接收鼠标
-  win.setIgnoreMouseEvents(true)
+  // 地毯以外点击穿透；鼠标在地毯上时由页面按地毯轮廓打开接收（随时可以直接拖、掀、折）
+  win.setIgnoreMouseEvents(true, { forward: true })
   try {
     win.setVisibleOnAllWorkspaces(true)
   } catch {}
+  // 不调用 blur() 推到最底层：macOS 上它是先隐藏再放到底层，之后点击能到窗口、地毯却可能不再响应。
+  // 地毯是普通层级窗口，其他应用被激活时它们的窗口会回到地毯上面
   win.showInactive()
-  // 推到最底层：在桌面图标之上、所有应用窗口之下
-  win.blur()
 }
 
 function saveState() {
@@ -317,6 +324,7 @@ function snapshot() {
     ping: state.ping,
     rug: state.rug,
     rugEditing,
+    todoTarget: state.todoTarget,
     items: viewItems(),
     extensions,
   }
@@ -528,12 +536,66 @@ function extDoc(ext) {
   }
 }
 
-/** 快速便签最多几个字，与前端 TODO_MAX 一致 */
+/** 待办：每行最多几个字、每张卡片最多几行，与前端 TODO_MAX / TODO_LINES 一致 */
 const TODO_MAX = 30
+const TODO_LINES = 6
+const TODO_COLORS = ['amber', 'rose', 'sky', 'emerald', 'violet']
 
-function todoItem(text) {
-  const t = Array.from(String(text).replace(/\s+/g, ' ').trim()).slice(0, TODO_MAX).join('')
-  return t ? { id: randomUUID(), type: 'todo', text: t, createdAt: Date.now() } : null
+const todoText = (text) => Array.from(String(text).replace(/\s+/g, ' ').trim()).slice(0, TODO_MAX).join('')
+const todoLine = (text) => ({ id: randomUUID(), text, done: false })
+
+/** 新建一张待办卡片（可以先不带内容） */
+function todoCard(text) {
+  const t = text ? todoText(text) : ''
+  return { id: randomUUID(), type: 'todo', lines: t ? [todoLine(t)] : [], color: 'amber', createdAt: Date.now() }
+}
+
+/** 快速添加的目标卡片：设置里指定的那张，没指定就用最新的一张 */
+function todoTarget() {
+  const cards = state.items.filter((it) => it.type === 'todo')
+  return cards.find((c) => c.id === state.todoTarget) || cards.sort((a, b) => b.createdAt - a.createdAt)[0] || null
+}
+
+function updateTodo(id, fn) {
+  update({ items: state.items.map((it) => (it.id === id && it.type === 'todo' ? fn(it) : it)) })
+}
+
+/** 往卡片里加一行；满了不自动新建，提示去设置里新建。返回是否加上了 */
+function addTodoLine(text, cardId) {
+  const t = todoText(text)
+  if (!t) return false
+  const card = cardId ? state.items.find((it) => it.id === cardId && it.type === 'todo') : todoTarget()
+  // 一张卡片都没有：这是第一张，直接建
+  if (!card) {
+    hang([todoCard(t)])
+    return true
+  }
+  if (card.lines.length >= TODO_LINES) {
+    utools.showNotification(`这张待办卡已经有 ${TODO_LINES} 条了，可以在设置的「待办」里新建一张`)
+    return false
+  }
+  updateTodo(card.id, (c) => ({ ...c, lines: [...c.lines, todoLine(t)] }))
+  ipcSend('overlay:peek')
+  return true
+}
+
+/** 勾选 / 取消勾选：只标记完成，不删除 */
+function toggleTodoLine(cardId, lineId) {
+  updateTodo(cardId, (c) => ({ ...c, lines: c.lines.map((l) => (l.id === lineId ? { ...l, done: !l.done } : l)) }))
+}
+
+/** 一键完成：整张卡片的条目都标成已完成 */
+function completeTodoCard(cardId) {
+  updateTodo(cardId, (c) => ({ ...c, lines: c.lines.map((l) => ({ ...l, done: true })) }))
+}
+
+/** 删除一行；最后一行也删了就把卡片取下 */
+function removeTodoLine(cardId, lineId) {
+  const card = state.items.find((it) => it.id === cardId && it.type === 'todo')
+  if (!card) return
+  const lines = card.lines.filter((l) => l.id !== lineId)
+  if (lines.length) updateTodo(cardId, (c) => ({ ...c, lines }))
+  else update({ items: state.items.filter((it) => it.id !== cardId), todoTarget: state.todoTarget === cardId ? null : state.todoTarget })
 }
 
 function widgetItem(ext) {
@@ -653,10 +715,15 @@ ipcRenderer.on('overlay:widget-data', (_e, id, data) => {
   saveState()
 })
 
+// 空夹子上点「待办」：在这个位置主动新建一张卡片
 ipcRenderer.on('overlay:add-todo', (_e, text, clipId) => {
-  const item = todoItem(text)
-  if (item) hang([item], clipId ? { clipId } : {})
+  const t = todoText(text)
+  if (t) hang([todoCard(t)], clipId ? { clipId } : {})
 })
+
+ipcRenderer.on('overlay:todo-toggle', (_e, cardId, lineId) => toggleTodoLine(cardId, lineId))
+ipcRenderer.on('overlay:todo-delete', (_e, cardId, lineId) => removeTodoLine(cardId, lineId))
+ipcRenderer.on('overlay:todo-complete', (_e, cardId) => completeTodoCard(cardId))
 
 // 在夹子上直接写待办时需要键盘焦点，这会把 uTools 切到前台
 ipcRenderer.on('overlay:focus', () => {
@@ -727,15 +794,12 @@ log('preload-start', { enabled: state.enabled, mode: state.mode })
 
 utools.onPluginOut((isKill) => {
   log('plugin-out', { isKill })
-  // uTools 被调到前台时地毯窗口可能跟着浮上来，退出插件时推回最底层（编辑中除外）
-  if (rug && !rug.win.isDestroyed() && !rugEditing) rug.win.blur()
 })
 
-// 只有编辑模式下才接收鼠标
+// 鼠标在地毯（或编辑工具栏）上时接收，其余点击穿透
 ipcRenderer.on('rug:accept', (_e, accept) => {
-  if (!rugEditing || !rug || rug.win.isDestroyed()) return
+  if (!rug || rug.win.isDestroyed()) return
   rug.win.setIgnoreMouseEvents(!accept, { forward: true })
-  log('rug-accept-applied', accept)
 })
 
 ipcRenderer.on('rug:ready', () => {
@@ -890,9 +954,21 @@ window.services = {
     update({ items: state.items.filter((it) => !(it.type === 'widget' && it.ext === id)) })
   },
   hangWidget: (ext) => hang([widgetItem(ext)]),
-  addTodo(text) {
-    const item = todoItem(text)
-    if (item) hang([item])
+  /** 快速添加一条待办（uTools 指令、设置页）：加到目标卡片里 */
+  addTodo: (text) => addTodoLine(text),
+  addTodoLine: (cardId, text) => addTodoLine(text, cardId),
+  removeTodoLine,
+  toggleTodoLine,
+  completeTodoCard,
+  /** 主动新建一张待办卡片，并设为快速添加的目标 */
+  newTodoCard(text) {
+    const card = todoCard(text)
+    state = { ...state, todoTarget: card.id }
+    hang([card])
+  },
+  setTodoTarget: (todoTarget) => update({ todoTarget }),
+  setTodoColor(cardId, color) {
+    if (TODO_COLORS.includes(color)) updateTodo(cardId, (c) => ({ ...c, color }))
   },
   setMaxItems(maxItems) {
     const content = state.items.filter((it) => CONTENT_TYPES.includes(it.type)).sort((a, b) => b.createdAt - a.createdAt)

@@ -16,9 +16,10 @@ const fallback: LineState = {
   extErrors: {},
   focusOnReveal: false,
   renderAnchor: true,
-  ping: { style: 'lol', lolWheel: [], wheel: [], duration: 1600, soundPack: 'digital', width: 480, height: 300, size: 56, wheelScale: 0.7, output: 'copy', sound: false },
+  ping: { style: 'lol', lolWheel: [], wheel: [], duration: 1600, soundPack: 'digital', width: 480, height: 300, size: 56, wheelScale: 0.7, output: 'both', sound: false },
   rug: { enabled: false, material: 'persian', quality: 'medium', precision: 'standard' },
   rugEditing: false,
+  todoTarget: null,
   items: [],
   extensions: [],
 }
