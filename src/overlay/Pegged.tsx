@@ -18,6 +18,8 @@ interface Props {
   onPinDown(e: ReactPointerEvent, id: string, onClick: () => void): void
   /** 碰一下，让它晃 */
   kick(id: string, amount: number): void
+  /** 开始把文件拖到别的应用：拖拽结束前不能收起绳子、不能切回点击穿透 */
+  onDragOut(): void
 }
 
 function useNow() {
@@ -151,7 +153,7 @@ function EmptyClip({ id, menuOpen, setMenuOpen }: { id: string; menuOpen: boolea
 }
 
 /** 夹在绳子上的一件东西：拖夹子换位置；单击复制，双击打开，拖卡片发到别的应用 */
-export function Pegged({ item, bind, onPinDown, kick }: Props) {
+export function Pegged({ item, bind, onPinDown, kick, onDragOut }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
@@ -210,8 +212,13 @@ export function Pegged({ item, bind, onPinDown, kick }: Props) {
             <div
               data-hit
               draggable={draggable}
-              onDragStart={() => {
-                if (draggable) window.overlay?.startDrag(item.path)
+              onDragStart={(e) => {
+                // 必须取消网页自己的 HTML5 拖拽：否则拖出去的是一个没有文件数据的元素，
+                // 微信 / QQ 会把它当成空文件。取消后只保留 startDrag 发起的系统文件拖拽
+                e.preventDefault()
+                if (!draggable) return
+                onDragOut()
+                window.overlay?.startDrag(item.path)
               }}
               onClick={() => {
                 if (copy(item)) setCopied(true)

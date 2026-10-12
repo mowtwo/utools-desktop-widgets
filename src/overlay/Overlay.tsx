@@ -10,6 +10,10 @@ import { drawRope } from './Rope'
 const REVEAL_DWELL_MS = 250
 /** 鼠标离开晾衣绳多久后收起 */
 const HIDE_DELAY_MS = 350
+/** 拖文件出去时，光标停住多久算拖拽结束 */
+const DRAG_OUT_STILL_MS = 1200
+/** 拖文件出去最多保持展开多久 */
+const DRAG_OUT_MAX_MS = 15000
 /** 新挂上东西时自动滑出展示的时长 */
 const PEEK_MS = 2500
 /** 离绳子多近算点在绳子上（px） */
@@ -54,6 +58,8 @@ export default function Overlay() {
   const drag = useRef<{ id: string; offset: number; startX: number; moved: boolean } | null>(null)
   const frame = useRef(0)
   const lastTime = useRef(0)
+  /** 正在把文件拖到别的应用，到这个时间点之前保持绳子展开、窗口可交互 */
+  const dragOutUntil = useRef(0)
   /** 拖过的挂件叠到最上面 */
   const topZ = useRef(1)
   // 滑入滑出也由这个循环驱动（弹簧），不用 CSS transition，方便统计到底出了几帧
@@ -172,6 +178,10 @@ export default function Overlay() {
     [wake],
   )
 
+  const onDragOut = useCallback(() => {
+    dragOutUntil.current = Date.now() + DRAG_OUT_MAX_MS
+  }, [])
+
   const kick = useCallback(
     (id: string, amount: number) => {
       pendulums.current.get(id)?.kick(amount)
@@ -247,6 +257,9 @@ export default function Overlay() {
     const center = bounds.x + bounds.width / 2
     let edgeSince = 0
     let awaySince = 0
+    let lastX = 0
+    let lastY = 0
+    let stillSince = 0
     return window.overlay?.watchCursor((p) => {
       const now = Date.now()
       const inside = p.x >= bounds.x && p.x < bounds.x + bounds.width && p.y >= bounds.y && p.y < bounds.y + bounds.height
@@ -263,6 +276,15 @@ export default function Overlay() {
         return
       }
       edgeSince = 0
+      // 正在拖文件出去：系统拖拽结束不会通知网页，按光标停住判断拖拽已经结束
+      if (now < dragOutUntil.current) {
+        if (p.x !== lastX || p.y !== lastY) stillSince = now
+        else if (now - stillSince > DRAG_OUT_STILL_MS) dragOutUntil.current = 0
+        lastX = p.x
+        lastY = p.y
+        awaySince = 0
+        return
+      }
       const away = !inside || p.y > bounds.y + topInset + PANEL_HEIGHT + 30
       if (away && now >= peekUntil.current && !drag.current) {
         awaySince ||= now
@@ -285,6 +307,7 @@ export default function Overlay() {
     const stripBottom = payload.topInset + PANEL_HEIGHT
     const onMove = (e: MouseEvent) => {
       if (drag.current) return
+      dragOutUntil.current = 0
       const el = document.elementFromPoint(e.clientX, e.clientY)
       const overItem = !!el?.closest('[data-hit]')
       const onRope = shown && nearRope(e.clientX, e.clientY)
@@ -293,7 +316,7 @@ export default function Overlay() {
       setInteractive(overItem || onRope || inStrip)
     }
     const onLeave = () => {
-      if (!drag.current) setInteractive(false)
+      if (!drag.current && Date.now() >= dragOutUntil.current) setInteractive(false)
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseleave', onLeave)
@@ -373,7 +396,7 @@ export default function Overlay() {
           </div>
         )}
         {payload.items.map((item) => (
-          <Pegged key={item.id} item={item} bind={bind} onPinDown={onPinDown} kick={kick} />
+          <Pegged key={item.id} item={item} bind={bind} onPinDown={onPinDown} kick={kick} onDragOut={onDragOut} />
         ))}
       </div>
       {window.overlay?.isDev() && <DebugHud stats={slideStats} revealed={revealed} />}

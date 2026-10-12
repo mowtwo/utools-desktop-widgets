@@ -22,6 +22,7 @@ interface UToolsApi {
   showNotification(body: string, clickFeatureCode?: string): void
   screenCapture(): Promise<string>
   showOpenDialog(options: { title?: string; properties?: string[] }): string[] | undefined
+  startDrag(filePath: string | string[]): void
 }
 
 interface Window {

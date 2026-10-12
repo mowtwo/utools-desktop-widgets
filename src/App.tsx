@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useLine } from '@/lib/use-line'
+import { cn } from '@/lib/utils'
 import { isContent, type ContentItem, type DisplayInfo, type HandlePosition, type LineMode } from '@/types/line'
 
 const PRIMARY = 'primary'
@@ -34,8 +35,18 @@ function Row({ icon, title, hint, children }: { icon: React.ReactNode; title: st
 
 function ItemRow({ item }: { item: ContentItem }) {
   const services = window.services!
+  const path = item.type === 'note' ? null : item.path
   return (
-    <div className="flex items-center gap-3 px-4 py-2">
+    <div
+      className={cn('flex items-center gap-3 px-4 py-2', path && 'cursor-grab')}
+      draggable={!!path}
+      title={path ? '拖到别的应用里发送' : undefined}
+      onDragStart={(e) => {
+        // 取消网页自己的拖拽，只保留 startDrag 发起的系统文件拖拽，否则对方收到的是空文件
+        e.preventDefault()
+        if (path) window.utools?.startDrag(path)
+      }}
+    >
       {item.type === 'image' && <img src={item.src} className="size-9 rounded-md border object-cover" />}
       {item.type === 'file' &&
         (item.src ? (
