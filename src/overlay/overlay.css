@@ -1,0 +1,9 @@
+@import "../index.css";
+
+/* 悬浮层窗口本身全透明，只有挂件可见 */
+html.overlay,
+html.overlay body {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}

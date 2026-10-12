@@ -1,0 +1,17 @@
+{
+  "main": "index.html",
+  "logo": "logo.png",
+  "preload": "preload.js",
+  "features": [
+    {
+      "code": "settings",
+      "description": "桌面挂件设置：开关悬浮层、管理挂件",
+      "cmds": ["桌面挂件", "悬浮挂件"]
+    },
+    {
+      "code": "toggle",
+      "description": "显示或隐藏所有桌面挂件",
+      "cmds": ["显示/隐藏桌面挂件"]
+    }
+  ]
+}
