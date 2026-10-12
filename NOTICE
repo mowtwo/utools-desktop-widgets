@@ -69,14 +69,64 @@ dependencies with their own license files.
 
 ----------------------------------------------------------------------
 
-The signal wheel interaction is inspired by lolPing
-(https://github.com/darrenprx/lolPing, MIT, Copyright (c) 2026 Danrui Meng).
-No code, icons or sounds from lolPing or from League of Legends are used:
-lolPing's ping icons and sounds belong to Riot Games and are not covered by
-its MIT license. This project draws its own signal icons.
+The signal wheel, ping effects and sound bank (src/ping/lol) are adapted from
+lolPing.
+
+lolPing
+https://github.com/darrenprx/lolPing
+
+MIT License
+
+Copyright (c) 2026 Danrui Meng
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ----------------------------------------------------------------------
 
-Signal sounds (public/sounds) are from Interface Sounds by Kenney
-(https://www.kenney.nl), released under Creative Commons Zero (CC0 1.0):
+League of Legends assets (public/lol)
+
+The ping icons and sounds in public/lol are © Riot Games, Inc., taken from
+League of Legends via lolPing. The sounds were re-encoded to Ogg Vorbis.
+They are NOT covered by this project's MIT License.
+
+utools-desktop-widgets was created under Riot Games' "Legal Jibber Jabber"
+policy using assets owned by Riot Games. Riot Games does not endorse or
+sponsor this project.
+
+----------------------------------------------------------------------
+
+Open-source signal style
+
+Icons (src/ping/game-icons.ts) are from game-icons.net
+(https://game-icons.net), licensed under Creative Commons Attribution 3.0
+(https://creativecommons.org/licenses/by/3.0/):
+- Lorc (http://lorcblog.blogspot.com): hazard-sign, skull-crossed-bones,
+  sprint, uncertainty, light-bulb, hourglass, arrow-dunk, on-target
+- Delapouite (http://delapouite.com): life-buoy, eye-target, confirmed,
+  thumb-up
+- Carl Olsen (https://twitter.com/unstoppableCarl): flame
+Only the white glyph paths were extracted; they are drawn on our own badge.
+
+----------------------------------------------------------------------
+
+Signal sounds in public/sounds are by Kenney (https://www.kenney.nl):
+- public/sounds/digital: Digital Audio
+- public/sounds/interface: Interface Sounds
+Both released under Creative Commons Zero (CC0 1.0):
 http://creativecommons.org/publicdomain/zero/1.0/

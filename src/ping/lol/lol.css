@@ -1,0 +1,53 @@
+/* 移植自 lolPing 的 overlay.css（MIT，Copyright (c) 2026 Danrui Meng）：只保留轮盘和信号部分，限定在 .lol 容器里，动画名加 lol- 前缀 */
+/* ---------- wheel ---------- */
+.lol .wheel {
+  position: absolute; left: 0; top: 0; width: 600px; height: 600px; margin: -300px 0 0 -300px;
+  pointer-events: none; opacity: 0; transform: scale(.85); transition: opacity .12s ease-out, transform .12s ease-out;
+}
+.lol .wheel.open { opacity: 1; transform: scale(1); }
+.lol .wheel .wedge { transition: fill-opacity .08s; }
+.lol .wheel .icon {
+  transition: filter .1s, transform .1s; transform-box: fill-box; transform-origin: center;
+  filter: grayscale(1) sepia(.75) saturate(1.3) brightness(1.15);
+}
+.lol .wheel .icon.hot { filter: none; transform: scale(1.18); }
+.lol .wheel .centerTxt { font: 600 15px -apple-system, "PingFang SC", "Segoe UI", sans-serif; letter-spacing: 1px; fill: #1fa9e0; }
+.lol .wheel .backTxt { font: 600 9px -apple-system, "PingFang SC", "Segoe UI", sans-serif; fill: #6c7a7c; letter-spacing: .5px; }
+
+/* ---------- pings (sizes scale with --size, timing with --dur) ---------- */
+.lol .ping { position: absolute; width: 0; height: 0; pointer-events: none; --size: 110px; --dur: 3.2s; }
+.lol .ping .ground {
+  position: absolute; left: calc(var(--size) * -0.42); top: calc(var(--size) * 0.2);
+  width: calc(var(--size) * 0.84); height: calc(var(--size) * 0.24); border-radius: 50%;
+  background: radial-gradient(closest-side, var(--c), transparent); opacity: 0; animation: lol-ground var(--dur) ease-out forwards;
+}
+.lol .ping .ring {
+  position: absolute; left: calc(var(--size) * -0.545); top: calc(var(--size) * -0.545);
+  width: calc(var(--size) * 1.09); height: calc(var(--size) * 1.09); box-sizing: border-box; border-radius: 50%;
+  border: 3px solid var(--c); box-shadow: 0 0 18px var(--c), inset 0 0 12px var(--c); opacity: 0; animation: lol-ring .65s ease-out forwards;
+}
+.lol .ping .ring.r2 { animation-delay: .22s; }
+.lol .ping .ring.r3 { animation-delay: 1.4s; }
+.lol .ping .art {
+  position: absolute; left: calc(var(--size) * -0.5); top: calc(var(--size) * -0.73);
+  width: var(--size); height: var(--size); animation: lol-life var(--dur) linear forwards;
+}
+.lol .ping .art img { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 0 10px var(--c)); }
+.lol .ping .pop { position: absolute; inset: 0; animation: lol-pop .28s cubic-bezier(.2,1.6,.4,1) both, lol-bob 1.6s ease-in-out .3s infinite; }
+.lol .ping .clash { position: absolute; inset: 0; animation: lol-shake .25s linear .22s both, lol-bob 1.6s ease-in-out .5s infinite; }
+.lol .ping .a1 { animation: lol-slide1 .22s cubic-bezier(.5,0,.9,.5) both; }
+.lol .ping .a2 { animation: lol-slide2 .22s cubic-bezier(.5,0,.9,.5) both; }
+.lol .ping .flash {
+  position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; border-radius: 50%;
+  background: radial-gradient(closest-side, #fff, var(--c) 40%, transparent); opacity: 0; animation: lol-flash .35s ease-out .2s forwards;
+}
+@keyframes lol-pop { 0% { transform: scale(.4); opacity: 0 } 60% { transform: scale(1.15); opacity: 1 } 100% { transform: scale(1) } }
+@keyframes lol-bob { 0%, 100% { translate: 0 0 } 50% { translate: 0 -5px } }
+@keyframes lol-ring { 0% { transform: scale(.25); opacity: .95 } 100% { transform: scale(1.35); opacity: 0 } }
+@keyframes lol-ground { 0% { opacity: 0 } 10% { opacity: .75 } 85% { opacity: .55 } 100% { opacity: 0 } }
+@keyframes lol-life { 0%, 87% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes lol-slide1 { 0% { transform: translate(calc(var(--size) * .64), calc(var(--size) * -.64)); opacity: 0 } 100% { transform: none; opacity: 1 } }
+@keyframes lol-slide2 { 0% { transform: translate(calc(var(--size) * -.64), calc(var(--size) * -.64)); opacity: 0 } 100% { transform: none; opacity: 1 } }
+@keyframes lol-shake { 0%, 100% { transform: none } 25% { transform: translate(-3px, 2px) } 50% { transform: translate(3px, -2px) } 75% { transform: translate(-2px, -1px) } }
+@keyframes lol-flash { 0% { opacity: 0; transform: scale(.3) } 30% { opacity: 1 } 100% { opacity: 0; transform: scale(2.2) } }
+

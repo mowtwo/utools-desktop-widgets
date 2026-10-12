@@ -1,11 +1,23 @@
 import { useEffect, useState } from 'react'
-import { Camera, Image, Keyboard, Maximize2, Volume2 } from 'lucide-react'
+import { Camera, Clock3, Image, Keyboard, Maximize2, Music, Palette, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Row } from '@/components/row'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { CAPTURE_SIZES, DEFAULT_WHEEL, playPingSound, SIGNALS, signalById, SignalBadge } from '@/ping/signals'
+import { ALL_PINGS, DEFAULT_LOL_WHEEL, pingById, soundUrl as lolSoundUrl, textureUrl } from '@/ping/lol/pings'
+import {
+  CAPTURE_SIZES,
+  DEFAULT_WHEEL,
+  DURATIONS,
+  openSoundUrl,
+  previewSound,
+  SIGNALS,
+  signalById,
+  SignalBadge,
+  SOUND_PACKS,
+  type SoundPack,
+} from '@/ping/signals'
 import type { PingSettings } from '@/types/line'
 
 const OUTPUTS: { value: PingSettings['output']; label: string }[] = [
@@ -21,7 +33,7 @@ const SLOT_NAMES = ['上', '右上', '右', '右下', '下', '左下', '左', '�
 export function PingPage({ ping }: { ping: PingSettings }) {
   const services = window.services!
   const [hotKey, setHotKey] = useState(() => services.pingHotKey())
-  const wheel = ping.wheel.length === 8 ? ping.wheel : DEFAULT_WHEEL
+  const lol = ping.style !== 'open'
 
   // 从 uTools 快捷键设置回来后刷新显示
   useEffect(() => {
@@ -30,16 +42,63 @@ export function PingPage({ ping }: { ping: PingSettings }) {
     return () => window.removeEventListener('focus', refresh)
   }, [services])
 
+  /** 轮盘上第 i 个位置：图标、名字、可选项、试听 */
+  const slots = lol
+    ? (ping.lolWheel.length === 8 ? ping.lolWheel : [...DEFAULT_LOL_WHEEL]).map((id) => {
+        const def = pingById(id)
+        return {
+          id,
+          icon: <img src={textureUrl(def.icon)} className="size-9 object-contain" />,
+          preview: () => previewSound(lolSoundUrl(def.sound)),
+        }
+      })
+    : (ping.wheel.length === 8 ? ping.wheel : DEFAULT_WHEEL).map((id) => ({
+        id,
+        icon: <SignalBadge signal={signalById(id)} size={36} />,
+        preview: () => previewSound(openSoundUrl(ping.soundPack, signalById(id))),
+      }))
+  const options = lol ? ALL_PINGS.map((p) => ({ id: p.id, label: p.name })) : SIGNALS.map((s) => ({ id: s.id, label: s.label }))
+  const setSlot = (i: number, id: string) => {
+    const ids = slots.map((s, j) => (j === i ? id : s.id))
+    services.setPing(lol ? { lolWheel: ids } : { wheel: ids })
+  }
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 p-5">
       <section className="divide-y rounded-xl border bg-card">
-        <Row icon={<Keyboard />} title="快捷键" hint="按下后在光标处弹出信号轮盘；推荐设成「双击 ⌥ Option」">
+        <Row icon={<Keyboard />} title="快捷键" hint="按下后在光标处弹出信号轮盘；推荐「双击 ⌥ Option」">
           <span className="font-mono text-xs text-muted-foreground">{hotKey ?? '未设置'}</span>
           <Button variant="outline" size="sm" onClick={services.setPingHotKey}>
             设置
           </Button>
         </Row>
-        <Row icon={<Camera />} title="截图" hint="发信号时以它为中心截一块屏幕，叠上信号图标">
+        <Row icon={<Palette />} title="风格" hint={lol ? '英雄联盟原版的信号、动画和音效' : '开源素材：game-icons 图标 + Kenney 音效'}>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={ping.style}
+            onValueChange={(v) => v && services.setPing({ style: v as PingSettings['style'] })}
+          >
+            <ToggleGroupItem value="lol">原版</ToggleGroupItem>
+            <ToggleGroupItem value="open">开源</ToggleGroupItem>
+          </ToggleGroup>
+        </Row>
+        <Row icon={<Clock3 />} title="停留时长" hint="信号在屏幕上显示多久">
+          <Select value={String(ping.duration)} onValueChange={(v) => services.setPing({ duration: Number(v) })}>
+            <SelectTrigger className="w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DURATIONS.map((d) => (
+                <SelectItem key={d.ms} value={String(d.ms)}>
+                  {d.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Row>
+        <Row icon={<Camera />} title="截图" hint="发信号时以它为中心截一块屏幕，叠上信号图案">
           <Select value={ping.output} onValueChange={(v) => services.setPing({ output: v as PingSettings['output'] })}>
             <SelectTrigger className="w-36">
               <SelectValue />
@@ -75,7 +134,7 @@ export function PingPage({ ping }: { ping: PingSettings }) {
             </Select>
           </Row>
         )}
-        <Row icon={<Image />} title="图标大小" hint="屏幕上的信号和截图里叠加的图标">
+        <Row icon={<Image />} title="图标大小" hint="屏幕上的信号和截图里叠加的图案">
           <ToggleGroup
             type="single"
             variant="outline"
@@ -88,34 +147,44 @@ export function PingPage({ ping }: { ping: PingSettings }) {
             <ToggleGroupItem value="lg">大</ToggleGroupItem>
           </ToggleGroup>
         </Row>
-        <Row icon={<Volume2 />} title="提示音" hint="默认关闭；音效来自 Kenney Interface Sounds（CC0）">
+        <Row icon={<Volume2 />} title="提示音" hint="默认关闭；开启后预先加载，播放没有延迟">
           <Switch checked={ping.sound} onCheckedChange={(sound) => services.setPing({ sound })} />
         </Row>
+        {!lol && ping.sound && (
+          <Row icon={<Music />} title="音效" hint="点下面轮盘上的图标可以试听">
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={ping.soundPack}
+              onValueChange={(v) => v && services.setPing({ soundPack: v as SoundPack })}
+            >
+              {(Object.keys(SOUND_PACKS) as SoundPack[]).map((k) => (
+                <ToggleGroupItem key={k} value={k}>
+                  {SOUND_PACKS[k].label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </Row>
+        )}
       </section>
 
       <section className="rounded-xl border bg-card p-4">
         <div className="mb-3 text-sm font-medium">轮盘</div>
         <div className="grid grid-cols-4 gap-3">
-          {wheel.map((id, i) => (
+          {slots.map((slot, i) => (
             <div key={i} className="flex flex-col items-center gap-1.5">
-              <button
-                title="试听"
-                onClick={() => playPingSound(signalById(id))}
-                className="transition hover:scale-110"
-              >
-                <SignalBadge signal={signalById(id)} size={36} />
+              <button title="试听" onClick={slot.preview} className="transition hover:scale-110">
+                {slot.icon}
               </button>
-              <Select
-                value={id}
-                onValueChange={(v) => services.setPing({ wheel: wheel.map((w, j) => (j === i ? v : w)) })}
-              >
+              <Select value={slot.id} onValueChange={(v) => setSlot(i, v)}>
                 <SelectTrigger size="sm" className="h-7 w-full text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SIGNALS.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.label}
+                  {options.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -124,8 +193,15 @@ export function PingPage({ ping }: { ping: PingSettings }) {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          信号交互参考了 lolPing（MIT）。图标和配色都是重新做的，没有使用游戏里的素材。
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          {lol ? (
+            <>
+              轮盘和信号特效移植自 lolPing（MIT）。本插件依据 Riot Games 的「Legal Jibber Jabber」政策使用 Riot Games
+              拥有的素材制作，Riot Games 不认可也不赞助本项目。
+            </>
+          ) : (
+            <>图标来自 game-icons.net（Lorc、Delapouite、Carl Olsen，CC BY 3.0），音效来自 Kenney（CC0）。</>
+          )}
         </p>
       </section>
     </div>

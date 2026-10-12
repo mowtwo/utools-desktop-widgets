@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Blocks, Camera, ClipboardPaste, FolderOpen, ListTodo, Plus, Trash2 } from 'lucide-react'
+import { Blocks, Camera, ClipboardPaste, FolderOpen, FolderTree, ListTodo, Plus, Trash2 } from 'lucide-react'
 import { TODO_MAX } from '@/types/line'
 import type { WidgetExtension } from '@/widget/protocol'
 import { cn } from '@/lib/utils'
@@ -34,6 +34,7 @@ export function EmptyClip({ id, menuOpen, setMenuOpen, extensions }: Props) {
 
   const actions = [
     { icon: <FolderOpen />, label: '选文件', run: () => pick('files') },
+    { icon: <FolderTree />, label: '挂文件夹', run: () => pick('folder') },
     { icon: <ClipboardPaste />, label: '粘贴', run: () => pick('paste') },
     { icon: <Camera />, label: '截图', run: () => pick('capture') },
     {

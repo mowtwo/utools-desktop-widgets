@@ -100,7 +100,7 @@ interface Window {
     remove(id: string): void
     move(id: string, x: number): void
     addClip(x: number): void
-    fillClip(clipId: string, source: 'files' | 'paste' | 'capture' | `widget:${string}`): void
+    fillClip(clipId: string, source: 'files' | 'folder' | 'paste' | 'capture' | `widget:${string}`): void
     drop(files: FileList, x: number, clipId?: string): void
     addTodo(text: string, clipId?: string): void
     /** 让悬浮层获得键盘焦点（在夹子上直接打字时） */

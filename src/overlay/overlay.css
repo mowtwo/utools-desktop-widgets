@@ -25,3 +25,10 @@ html.overlay body {
   20%, 85% { opacity: 1; translate: 0 0; }
   100% { opacity: 0; }
 }
+
+/* 小把手位置的提示 */
+@keyframes toast-life {
+  0% { opacity: 0; translate: 0 -6px; }
+  10%, 80% { opacity: 1; translate: 0 0; }
+  100% { opacity: 0; }
+}

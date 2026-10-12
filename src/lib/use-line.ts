@@ -16,7 +16,7 @@ const fallback: LineState = {
   extErrors: {},
   focusOnReveal: false,
   renderAnchor: true,
-  ping: { wheel: [], width: 480, height: 300, icon: 'md', output: 'copy', sound: false },
+  ping: { style: 'lol', lolWheel: [], wheel: [], duration: 1600, soundPack: 'digital', width: 480, height: 300, icon: 'md', output: 'copy', sound: false },
   rug: { enabled: false, material: 'persian', quality: 'medium', precision: 'standard' },
   items: [],
   extensions: [],

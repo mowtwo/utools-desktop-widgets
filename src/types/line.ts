@@ -70,8 +70,16 @@ export interface RugSettings {
 }
 
 export interface PingSettings {
-  /** 轮盘从正上方开始顺时针的 8 个信号 id */
+  /** lol：英雄联盟原版素材；open：开源素材 */
+  style: 'lol' | 'open'
+  /** 原版风格的轮盘：从正上方开始顺时针的 8 个信号 id */
+  lolWheel: string[]
+  /** 开源风格的轮盘 */
   wheel: string[]
+  /** 信号停留时长（ms） */
+  duration: number
+  /** 开源风格的音效包 */
+  soundPack: 'digital' | 'interface'
   /** 截图尺寸（DIP） */
   width: number
   height: number

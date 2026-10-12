@@ -34,6 +34,8 @@ interface Props {
   /** 挂件调用 api.line.* / api.handle.* */
   onWidgetLine(id: string, op: LineOp, value?: boolean): void
   onWidgetHandle(id: string, value: HandleContent | null): void
+  /** 在小把手位置弹出提示 */
+  onToast(text: string): void
 }
 
 function Photo({ src }: { src: string }) {
@@ -104,14 +106,17 @@ interface WidgetCardProps {
   themeKey: unknown
   onLine(id: string, op: LineOp, value?: boolean): void
   onHandle(id: string, value: HandleContent | null): void
+  onToast(text: string): void
 }
 
-function WidgetCard({ id, extId, extension, data, themeKey, onLine, onHandle }: WidgetCardProps) {
+function WidgetCard({ id, extId, extension, data, themeKey, onLine, onHandle, onToast }: WidgetCardProps) {
   const [error, setError] = useState<string | null>(null)
   const host = useMemo<WidgetHost>(() => {
     const o = window.overlay!
     return {
-      copy: (text) => o.copyText(text),
+      copy: (text) => {
+        if (o.copyText(text)) onToast('已复制')
+      },
       open: (url) => void o.openExternal(url),
       notify: (text) => o.notify(text),
       saveData: (d) => o.saveWidgetData(id, d),
@@ -123,7 +128,7 @@ function WidgetCard({ id, extId, extension, data, themeKey, onLine, onHandle }: 
         o.reportWidgetError(extId, message, line, fatal)
       },
     }
-  }, [id, extId, onLine, onHandle])
+  }, [id, extId, onLine, onHandle, onToast])
 
   if (!extension) {
     return (
@@ -160,6 +165,7 @@ export function Pegged({
   dimmed,
   onWidgetLine,
   onWidgetHandle,
+  onToast,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -245,6 +251,7 @@ export function Pegged({
                 themeKey={themeKey}
                 onLine={onWidgetLine}
                 onHandle={onWidgetHandle}
+                onToast={onToast}
               />
             ) : item.type === 'todo' ? (
               <TodoCard item={item} onDone={fallAndRemove} />

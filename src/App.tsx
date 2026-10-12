@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Activity, Bug, Focus, HeartPulse, Sparkle, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
+import { Activity, Bug, Focus, FolderTree, HeartPulse, Sparkle, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -172,6 +172,12 @@ function LinePage({ line }: { line: LineState }) {
     if (paths?.length) services.addFiles(paths)
   }
 
+  /** 文件夹挂成可展开的衣架 */
+  const pickFolder = () => {
+    const paths = window.utools?.showOpenDialog({ title: '把文件夹挂成衣架', properties: ['openDirectory'] })
+    if (paths?.length) services.addFiles(paths)
+  }
+
   const submitNote = () => {
     if (kind === 'todo') services.addTodo(note)
     else services.addNote(note)
@@ -324,6 +330,9 @@ function LinePage({ line }: { line: LineState }) {
           </Button>
           <Button variant="outline" onClick={pickFiles}>
             <FolderOpen /> 挂文件
+          </Button>
+          <Button variant="outline" onClick={pickFolder} title="展开后列出最近的文件，最后一项用访达打开">
+            <FolderTree /> 挂文件夹
           </Button>
         </div>
         <form

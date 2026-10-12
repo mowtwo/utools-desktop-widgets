@@ -2,6 +2,7 @@
 // 地毯的创意和视觉设计来自 Terkel（https://x.com/terkelg）。
 // 本项目的改动：
 // - 渲染等级：quality 参数（high / medium / low）控制像素密度上限、阴影贴图尺寸、阴影模糊采样和抗锯齿
+// - 渲染器开启 preserveDrawingBuffer：透明窗口重新合成时保留上一帧，避免闪成空白
 // 其余代码保持原样；与宿主的通信由 ../main.js 提供的 window.webkit.messageHandlers.rug 垫片转接。
 
 // 桌面地毯主程序：布料模拟（verlet 积分加距离约束）、渲染、鼠标交互、演示脚本。
@@ -23,7 +24,7 @@ const QUALITY = {
 const post = (m) => { try { window.webkit.messageHandlers.rug.postMessage(m); } catch (e) { /* 浏览器里调试时没有宿主 */ } };
 
 // ---------- 渲染器与相机 ----------
-const renderer = new THREE.WebGLRenderer({ antialias: QUALITY.antialias, alpha: true, premultipliedAlpha: true });
+const renderer = new THREE.WebGLRenderer({ antialias: QUALITY.antialias, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, QUALITY.pixelRatio));
 renderer.setSize(W, H);
 renderer.setClearColor(0x000000, 0);

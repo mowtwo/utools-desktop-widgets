@@ -73,6 +73,11 @@ export default function Overlay() {
   const [handleContent, setHandleContent] = useState<(HandleContent & { owner: string }) | null>(null)
   /** 要求晾衣绳保持展开的挂件 */
   const keepOpen = useRef(new Set<string>())
+  /** 小把手位置的提示（复制了、挂上了…），晾衣绳展开时也显示 */
+  const [toast, setToast] = useState<{ key: number; text: string } | null>(null)
+  const showToast = useCallback((text: string) => {
+    if (text) setToast({ key: Date.now(), text })
+  }, [])
   const interactive = useRef(false)
   const revealedRef = useRef(false)
   const peekUntil = useRef(0)
@@ -497,12 +502,22 @@ export default function Overlay() {
             dimmed={focusOwner !== null && focusOwner !== item.id}
             onWidgetLine={onWidgetLine}
             onWidgetHandle={onWidgetHandle}
+            onToast={showToast}
           />
         ))}
       </div>
       {payload.debug && <DebugHud stats={slideStats} revealed={revealed} />}
       {payload.renderAnchor && <RenderAnchor />}
-      <PingLayer settings={payload.ping} bounds={payload.bounds} />
+      <PingLayer settings={payload.ping} bounds={payload.bounds} onToast={showToast} />
+      {toast && (
+        <Toast
+          key={toast.key}
+          text={toast.text}
+          top={payload.topInset + 8}
+          left={`${HANDLE_X[payload.handle] * 100}%`}
+          onDone={() => setToast((t) => (t?.key === toast.key ? null : t))}
+        />
+      )}
       {/* 收起时屏幕顶部中间留一个小把手：碰一下就拉下来 */}
       {!shown && (
         <div
@@ -583,4 +598,20 @@ function RenderAnchor() {
     return () => clearInterval(timer)
   }, [])
   return <div ref={ref} aria-hidden className="pointer-events-none fixed right-0 bottom-0 size-px bg-neutral-500" style={{ opacity: 0.5 }} />
+}
+
+/** 小把手位置的一行提示：弹出、停 1.6 秒、淡出 */
+function Toast({ text, top, left, onDone }: { text: string; top: number; left: string; onDone(): void }) {
+  useEffect(() => {
+    const timer = setTimeout(onDone, 1900)
+    return () => clearTimeout(timer)
+  }, [onDone])
+  return (
+    <div
+      className="pointer-events-none fixed z-50 rounded-full bg-neutral-900/85 px-3 py-1 text-xs font-medium whitespace-nowrap text-white shadow-lg"
+      style={{ top, left, transform: 'translateX(-50%)', animation: 'toast-life 1.9s ease-out both' }}
+    >
+      {text}
+    </div>
+  )
 }

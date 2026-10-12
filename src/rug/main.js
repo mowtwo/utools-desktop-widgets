@@ -23,9 +23,8 @@ window.webkit = {
             poly = Array.isArray(m.poly) ? m.poly : []
             break
           case 'drag':
+            // 不在每次拖完时把窗口推回最底层：Electron 在 macOS 上是先隐藏再放到底层，会闪一下
             dragging = !!m.active
-            // 拖完把窗口推回最底层，免得盖住别的应用
-            if (!dragging) setTimeout(() => bridge?.pushBack(), 300)
             break
           case 'material':
             bridge?.saveMaterial(m.id)
@@ -80,17 +79,7 @@ setInterval(() => {
   setAccept(dragging || hit)
 }, 33)
 
-// 渲染保活：和晾衣绳一样，透明窗口长时间不重绘时后续变化可能画不出来
-if (params.get('anchor') === '1') {
-  const dot = document.createElement('div')
-  Object.assign(dot.style, { position: 'fixed', right: '0', bottom: '0', width: '1px', height: '1px', background: '#808080', opacity: '0.5', pointerEvents: 'none' })
-  document.body.appendChild(dot)
-  let on = false
-  setInterval(() => {
-    on = !on
-    dot.style.opacity = on ? '0.51' : '0.5'
-  }, 500)
-}
+// 不加渲染保活点：全屏的 WebGL 透明窗口每次重绘都要整窗重新合成，周期性地改动会造成闪烁
 
 await import('./vendor/rug.js')
 bridge?.log('rug-ready')

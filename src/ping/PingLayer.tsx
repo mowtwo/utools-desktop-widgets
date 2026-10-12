@@ -1,37 +1,37 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type { PingSettings, Rect } from '@/types/line'
-import { DEFAULT_WHEEL, ICON_SIZES, playPingSound, signalById, SignalBadge, type Signal } from './signals'
+import { spawnPing } from './lol/fx'
+import { ALL_PINGS, DEFAULT_LOL_WHEEL, pingById, soundUrl as lolSoundUrl, textureUrl, TICK_SOUND, type PingDef } from './lol/pings'
+import { SoundBank } from './lol/soundBank'
+import { Wheel } from './lol/wheel'
+import { DEFAULT_WHEEL, ICON_SIZES, SIGNALS, signalById, SignalBadge, SOUND_PACKS, type Signal } from './signals'
+import './lol/lol.css'
 
-/** 轮盘半径、中心取消区半径（px） */
+/** 开源风格轮盘的半径、中心取消区半径（px） */
 const RADIUS = 82
 const DEAD_ZONE = 26
 /** 轮盘打开后多久没操作自动关闭（ms） */
 const WHEEL_TIMEOUT = 8000
-/** 信号在屏幕上停留多久（ms） */
-const PING_MS = 2400
+/** 原版风格的信号尺寸（与 lolPing 的 --size 对应） */
+const LOL_SIZES = { sm: 80, md: 110, lg: 140 } as const
 
 interface Props {
   settings: PingSettings
   bounds: Rect
+  /** 在小把手位置弹出一条提示 */
+  onToast(text: string): void
 }
 
-interface Ping {
-  key: number
-  x: number
-  y: number
-  signal: Signal
-}
+/** 截图里怎么画这个信号 */
+type Drawer = (ctx: CanvasRenderingContext2D, cx: number, cy: number, scale: number) => Promise<void>
 
-/** 把徽章渲染成 SVG 字符串，用来叠到截图上 */
-function badgeSvg(signal: Signal, size: number) {
-  const host = document.createElement('div')
-  const root = createRoot(host)
-  flushSync(() => root.render(<SignalBadge signal={signal} size={size} />))
-  const svg = host.innerHTML
-  root.unmount()
-  return svg
+const OUTPUT_TOAST: Record<PingSettings['output'], string> = {
+  copy: '信号截图已复制',
+  hang: '信号截图已挂到晾衣绳',
+  both: '信号截图已复制，并挂到晾衣绳',
+  none: '',
 }
 
 function loadImage(src: string) {
@@ -45,128 +45,277 @@ function loadImage(src: string) {
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)))
 
+/** 把开源风格的徽章渲染成 SVG 字符串，用来叠到截图上 */
+function badgeSvg(signal: Signal, size: number) {
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  flushSync(() => root.render(<SignalBadge signal={signal} size={size} />))
+  const svg = host.innerHTML
+  root.unmount()
+  return svg
+}
+
+/** 原版风格截图里的信号：地面光晕 + 图案（和屏幕上 lolPing 的样式一致） */
+function lolDrawer(def: PingDef, sizeDip: number): Drawer {
+  return async (ctx, cx, cy, scale) => {
+    const size = sizeDip * scale
+    const gy = cy + size * 0.32
+    const ground = ctx.createRadialGradient(cx, gy, 0, cx, gy, size * 0.42)
+    ground.addColorStop(0, `${def.color}cc`)
+    ground.addColorStop(1, `${def.color}00`)
+    ctx.save()
+    // 地面光晕是压扁的椭圆
+    ctx.translate(cx, gy)
+    ctx.scale(1, 0.29)
+    ctx.translate(-cx, -gy)
+    ctx.fillStyle = ground
+    ctx.beginPath()
+    ctx.arc(cx, gy, size * 0.42, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+    const images = await Promise.all(def.art.map((a) => loadImage(textureUrl(a))))
+    ctx.save()
+    ctx.shadowColor = def.color
+    ctx.shadowBlur = 10 * scale
+    for (const img of images) ctx.drawImage(img, cx - size / 2, cy - size * 0.73, size, size)
+    ctx.restore()
+  }
+}
+
+function openDrawer(signal: Signal, sizeDip: number): Drawer {
+  return async (ctx, cx, cy, scale) => {
+    const size = sizeDip * scale
+    ctx.beginPath()
+    ctx.arc(cx, cy, size * 0.85, 0, Math.PI * 2)
+    ctx.fillStyle = `${signal.color}33`
+    ctx.fill()
+    const badge = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(badgeSvg(signal, sizeDip))}`)
+    ctx.drawImage(badge, cx - size / 2, cy - size / 2, size, size)
+  }
+}
+
 /**
  * 信号：快捷键在光标处弹出轮盘，按方向选一个信号点一下；
- * 设置了截图就先截下以光标为中心的一块、叠上信号图标，再在屏幕上播放信号动画
+ * 设置了截图就先截下以光标为中心的一块、叠上信号图案，再在屏幕上播放信号动画。
+ * 原版风格的轮盘、特效、音效库移植自 lolPing（MIT），素材按 Riot 的同人政策使用
  */
-export function PingLayer({ settings, bounds }: Props) {
-  const [wheel, setWheel] = useState<{ x: number; y: number } | null>(null)
+export function PingLayer({ settings, bounds, onToast }: Props) {
+  const [wheelAt, setWheelAt] = useState<{ x: number; y: number } | null>(null)
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
-  const [pings, setPings] = useState<Ping[]>([])
+  const [openPings, setOpenPings] = useState<{ key: number; x: number; y: number; signal: Signal }[]>([])
   const seq = useRef(0)
   const settingsRef = useRef(settings)
   const boundsRef = useRef(bounds)
+  const toastRef = useRef(onToast)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const layerRef = useRef<HTMLDivElement>(null)
+  const lolWheel = useRef<Wheel | null>(null)
+  const bank = useRef<{ key: string; bank: SoundBank } | null>(null)
+  const lol = settings.style !== 'open'
 
   useEffect(() => {
     settingsRef.current = settings
     boundsRef.current = bounds
+    toastRef.current = onToast
   })
+
+  /** 提示音：开了才加载，按风格 / 音效包预先解码 */
+  const sounds = useMemo(() => {
+    if (!settings.sound) return null
+    if (lol) {
+      const names = [...new Set([...ALL_PINGS.map((p) => p.sound), TICK_SOUND])]
+      return { key: 'lol', entries: names.map((s) => ({ key: s, url: lolSoundUrl(s) })) }
+    }
+    const pack = SOUND_PACKS[settings.soundPack] ?? SOUND_PACKS.digital
+    return {
+      key: `open-${settings.soundPack}`,
+      entries: SIGNALS.map((s) => ({ key: s.id, url: `sounds/${settings.soundPack}/${pack.files[s.id]}.${pack.ext}` })),
+    }
+  }, [settings.sound, settings.soundPack, lol])
+
+  useEffect(() => {
+    if (!sounds || bank.current?.key === sounds.key) return
+    const b = new SoundBank()
+    void b.load(sounds.entries)
+    bank.current = { key: sounds.key, bank: b }
+  }, [sounds])
+
+  const play = (key: string) => {
+    if (settingsRef.current.sound) bank.current?.bank.play(key, 0.7)
+  }
+
+  // 原版风格的轮盘是 lolPing 的 SVG 类，命令式地画在 svg 里
+  useLayoutEffect(() => {
+    const svg = svgRef.current
+    if (!lol || !svg) return
+    lolWheel.current = new Wheel(svg, '信号', textureUrl('generic_ping'), () => play(TICK_SOUND))
+    return () => {
+      lolWheel.current = null
+      svg.innerHTML = ''
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lol])
+
+  useEffect(() => {
+    const ids = settings.lolWheel.length === 8 ? settings.lolWheel : DEFAULT_LOL_WHEEL
+    lolWheel.current?.setItems(ids.map((id) => ({ key: id, icon: textureUrl(pingById(id).icon) })))
+  }, [settings.lolWheel, lol])
 
   useEffect(() => {
     window.overlay?.onPingOpen((p) => {
       const b = boundsRef.current
-      setWheel({ x: p.x - b.x, y: p.y - b.y })
+      const at = { x: p.x - b.x, y: p.y - b.y }
+      setWheelAt(at)
       setPointer(null)
+      lolWheel.current?.open(at.x, at.y)
     })
   }, [])
 
   // 太久没操作就收起轮盘
   useEffect(() => {
-    if (!wheel) return
-    const timer = setTimeout(() => setWheel(null), WHEEL_TIMEOUT)
+    if (!wheelAt) return
+    const timer = setTimeout(() => {
+      setWheelAt(null)
+      lolWheel.current?.cancel()
+    }, WHEEL_TIMEOUT)
     return () => clearTimeout(timer)
-  }, [wheel])
+  }, [wheelAt])
 
-  const ids = settings.wheel.length === 8 ? settings.wheel : DEFAULT_WHEEL
-  const slots = ids.map(signalById)
+  const close = () => {
+    setWheelAt(null)
+    lolWheel.current?.cancel()
+  }
 
-  /** 光标相对轮盘中心的方向 → 第几个扇区（正上方是 0，顺时针） */
+  const openIds = settings.wheel.length === 8 ? settings.wheel : DEFAULT_WHEEL
+  const openSlots = openIds.map(signalById)
+
+  /** 开源风格：光标相对轮盘中心的方向 → 第几个扇区（正上方是 0，顺时针） */
   const hovered = (() => {
-    if (!wheel || !pointer) return null
-    const dx = pointer.x - wheel.x
-    const dy = pointer.y - wheel.y
+    if (lol || !wheelAt || !pointer) return null
+    const dx = pointer.x - wheelAt.x
+    const dy = pointer.y - wheelAt.y
     if (Math.hypot(dx, dy) < DEAD_ZONE) return null
     const angle = (Math.atan2(dx, -dy) * 180) / Math.PI
     return Math.round(((angle + 360) % 360) / 45) % 8
   })()
 
-  const fire = async (at: { x: number; y: number }, signal: Signal) => {
-    setWheel(null)
+  const fire = async (at: { x: number; y: number }, show: () => void, draw: Drawer) => {
+    setWheelAt(null)
     const s = settingsRef.current
-    const b = boundsRef.current
     if (s.output !== 'none') {
       // 等轮盘从屏幕上消失再截，截图里不能有轮盘
       await nextFrame()
       await nextFrame()
       try {
-        await captureAndSend(at, signal, s, b)
+        await captureAndSend(at, draw, s, boundsRef.current)
+        toastRef.current(OUTPUT_TOAST[s.output])
       } catch (e) {
         window.overlay?.log('ping-failed', String((e as Error)?.message ?? e))
+        toastRef.current('信号截图失败')
       }
     }
-    const key = ++seq.current
-    setPings((list) => [...list, { key, x: at.x, y: at.y, signal }])
-    if (s.sound) playPingSound(signal)
-    setTimeout(() => setPings((list) => list.filter((p) => p.key !== key)), PING_MS)
+    show()
+  }
+
+  const fireLol = (id: string, at: { x: number; y: number }) => {
+    const def = pingById(id)
+    const size = LOL_SIZES[settingsRef.current.icon]
+    void fire(
+      at,
+      () => {
+        if (layerRef.current) spawnPing(layerRef.current, def, at.x, at.y, { sizePx: size, durationS: settingsRef.current.duration / 1000 })
+        play(def.sound)
+      },
+      lolDrawer(def, size),
+    )
+  }
+
+  const fireOpen = (signal: Signal, at: { x: number; y: number }) => {
+    void fire(
+      at,
+      () => {
+        const key = ++seq.current
+        setOpenPings((list) => [...list, { key, x: at.x, y: at.y, signal }])
+        play(signal.id)
+        setTimeout(() => setOpenPings((list) => list.filter((p) => p.key !== key)), settingsRef.current.duration)
+      },
+      openDrawer(signal, ICON_SIZES[settingsRef.current.icon]),
+    )
+  }
+
+  const onClick = (e: React.MouseEvent) => {
+    if (!wheelAt) return
+    if (lol) {
+      const picked = lolWheel.current?.release(e.clientX, e.clientY)
+      if (picked) fireLol(picked.key, wheelAt)
+      else close()
+    } else if (hovered === null) close()
+    else fireOpen(openSlots[hovered], wheelAt)
   }
 
   return (
-    <>
-      {wheel && (
+    <div className="lol">
+      {wheelAt && (
         // 轮盘打开时整个窗口接收鼠标（data-hit），点中心或右键取消
         <div
           data-hit
           className="fixed inset-0 cursor-crosshair"
-          onMouseMove={(e) => setPointer({ x: e.clientX, y: e.clientY })}
-          onClick={() => (hovered === null ? setWheel(null) : void fire(wheel, slots[hovered]))}
+          onMouseMove={(e) => {
+            setPointer({ x: e.clientX, y: e.clientY })
+            lolWheel.current?.move(e.clientX, e.clientY)
+          }}
+          onClick={onClick}
           onContextMenu={(e) => {
             e.preventDefault()
-            setWheel(null)
+            close()
           }}
-        >
+        />
+      )}
+      {/* 原版风格：lolPing 的轮盘（不接收鼠标，鼠标由上面的遮罩处理） */}
+      {lol && <svg ref={svgRef} id="ping-wheel" className="wheel" viewBox="-300 -300 600 600" />}
+
+      {!lol && wheelAt && (
+        <div className="pointer-events-none absolute animate-in fade-in zoom-in-75 duration-150" style={{ left: wheelAt.x, top: wheelAt.y }}>
           <div
-            className="pointer-events-none absolute animate-in fade-in zoom-in-75 duration-150"
-            style={{ left: wheel.x, top: wheel.y }}
-          >
-            <div
-              className="absolute -translate-1/2 rounded-full bg-black/45 shadow-2xl backdrop-blur-sm"
-              style={{ width: RADIUS * 2 + 56, height: RADIUS * 2 + 56 }}
-            />
-            <div className="absolute size-3 -translate-1/2 rounded-full border-2 border-white/80 bg-white/20" />
-            {slots.map((signal, i) => {
-              const rad = (i * 45 * Math.PI) / 180
-              const active = hovered === i
-              return (
-                <div
-                  key={i}
-                  className="absolute -translate-1/2 transition-transform duration-100"
-                  style={{
-                    left: Math.sin(rad) * RADIUS,
-                    top: -Math.cos(rad) * RADIUS,
-                    scale: active ? 1.25 : 0.9,
-                    opacity: hovered === null || active ? 1 : 0.55,
-                  }}
-                >
-                  <SignalBadge signal={signal} size={40} />
-                </div>
-              )
-            })}
-            <div className="absolute top-[118px] -translate-x-1/2 rounded-full bg-black/60 px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-white">
-              {hovered === null ? '移向一个信号再点击，点中心或右键取消' : slots[hovered].label}
-            </div>
+            className="absolute -translate-1/2 rounded-full bg-black/45 shadow-2xl backdrop-blur-sm"
+            style={{ width: RADIUS * 2 + 56, height: RADIUS * 2 + 56 }}
+          />
+          <div className="absolute size-3 -translate-1/2 rounded-full border-2 border-white/80 bg-white/20" />
+          {openSlots.map((signal, i) => {
+            const rad = (i * 45 * Math.PI) / 180
+            const active = hovered === i
+            return (
+              <div
+                key={i}
+                className="absolute -translate-1/2 transition-transform duration-100"
+                style={{
+                  left: Math.sin(rad) * RADIUS,
+                  top: -Math.cos(rad) * RADIUS,
+                  scale: active ? 1.25 : 0.9,
+                  opacity: hovered === null || active ? 1 : 0.55,
+                }}
+              >
+                <SignalBadge signal={signal} size={40} />
+              </div>
+            )
+          })}
+          <div className="absolute top-[118px] -translate-x-1/2 rounded-full bg-black/60 px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-white">
+            {hovered === null ? '移向一个信号再点击，点中心或右键取消' : openSlots[hovered].label}
           </div>
         </div>
       )}
 
-      {pings.map((p) => (
-        <PingMark key={p.key} ping={p} size={ICON_SIZES[settings.icon]} />
+      {/* 原版风格的信号由 lolPing 的 spawnPing 画在这一层 */}
+      <div ref={layerRef} className="pointer-events-none fixed inset-0" />
+      {openPings.map((p) => (
+        <OpenPingMark key={p.key} ping={p} size={ICON_SIZES[settings.icon]} duration={settings.duration} />
       ))}
-    </>
+    </div>
   )
 }
 
-/** 屏幕上的信号：徽章弹出、两圈波纹扩散，然后淡出 */
-function PingMark({ ping, size }: { ping: Ping; size: number }) {
+/** 开源风格的信号：徽章弹出、两圈波纹扩散，然后淡出 */
+function OpenPingMark({ ping, size, duration }: { ping: { x: number; y: number; signal: Signal }; size: number; duration: number }) {
   return (
     <div className="pointer-events-none absolute" style={{ left: ping.x, top: ping.y }}>
       {[0, 1].map((i) => (
@@ -181,7 +330,7 @@ function PingMark({ ping, size }: { ping: Ping; size: number }) {
           }}
         />
       ))}
-      <div className="absolute -translate-1/2" style={{ animation: `ping-pop ${PING_MS}ms ease-out both` }}>
+      <div className="absolute -translate-1/2" style={{ animation: `ping-pop ${duration}ms ease-out both` }}>
         <SignalBadge signal={ping.signal} size={size} />
       </div>
       <div
@@ -191,7 +340,7 @@ function PingMark({ ping, size }: { ping: Ping; size: number }) {
           top: size / 2 + 8,
           transform: 'translateX(-50%)',
           background: ping.signal.color,
-          animation: `ping-fade ${PING_MS}ms ease-out both`,
+          animation: `ping-fade ${duration}ms ease-out both`,
         }}
       >
         {ping.signal.label}
@@ -200,8 +349,8 @@ function PingMark({ ping, size }: { ping: Ping; size: number }) {
   )
 }
 
-/** 截下以信号为中心的一块，叠上信号徽章，交给主界面按设置复制或挂起来 */
-async function captureAndSend(at: { x: number; y: number }, signal: Signal, s: PingSettings, b: Rect) {
+/** 截下以信号为中心的一块，画上信号，交给主界面按设置复制或挂起来 */
+async function captureAndSend(at: { x: number; y: number }, draw: Drawer, s: PingSettings, b: Rect) {
   // 截图框以信号为中心，碰到屏幕边就往里挪
   const w = Math.min(s.width, b.width)
   const h = Math.min(s.height, b.height)
@@ -216,17 +365,6 @@ async function captureAndSend(at: { x: number; y: number }, signal: Signal, s: P
   canvas.height = img.naturalHeight
   const ctx = canvas.getContext('2d')!
   ctx.drawImage(img, 0, 0)
-
-  const size = ICON_SIZES[s.icon] * shot.scale
-  const cx = (at.x - left) * shot.scale
-  const cy = (at.y - top) * shot.scale
-  // 一圈淡淡的光晕，让图标在任何背景上都显眼
-  ctx.beginPath()
-  ctx.arc(cx, cy, size * 0.85, 0, Math.PI * 2)
-  ctx.fillStyle = `${signal.color}33`
-  ctx.fill()
-  const badge = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(badgeSvg(signal, ICON_SIZES[s.icon]))}`)
-  ctx.drawImage(badge, cx - size / 2, cy - size / 2, size, size)
-
+  await draw(ctx, (at.x - left) * shot.scale, (at.y - top) * shot.scale, shot.scale)
   window.overlay!.pingResult(canvas.toDataURL('image/png'))
 }

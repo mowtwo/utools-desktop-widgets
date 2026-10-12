@@ -51,7 +51,16 @@ const defaultState = {
   extErrors: {},
   /** 信号：轮盘上的 8 个信号、截图尺寸、叠加的图标大小、截图后怎么处理、提示音 */
   ping: {
+    /** lol：英雄联盟原版素材（Riot 同人政策）；open：开源素材（game-icons + Kenney） */
+    style: 'lol',
+    /** 原版风格的轮盘 */
+    lolWheel: ['danger', 'push', 'omw', 'allin', 'assist', 'needvision', 'missing', 'enemyvision'],
+    /** 开源风格的轮盘 */
     wheel: ['alert', 'coming', 'help', 'look', 'done', 'idea', 'question', 'danger'],
+    /** 信号在屏幕上停留多久（ms） */
+    duration: 1600,
+    /** 开源风格的音效包：digital / interface */
+    soundPack: 'digital',
     width: 480,
     height: 300,
     icon: 'md',
@@ -173,10 +182,9 @@ function syncRug() {
     lang: 'zh-Hans',
     bx: String(display.bounds.x),
     by: String(display.bounds.y),
-    anchor: state.renderAnchor ? '1' : '0',
   })
   // 花样在地毯里切换后只是存下来，不需要重开窗口
-  const key = `${display.id}|${state.rug.quality}|${state.rug.precision}|${state.renderAnchor}`
+  const key = `${display.id}|${state.rug.quality}|${state.rug.precision}`
   if (rug && !rug.win.isDestroyed() && rug.key === key) return
   closeRug('reopen')
   const { bounds } = display
@@ -555,6 +563,10 @@ ipcRenderer.on('overlay:fill-clip', async (_e, clipId, source) => {
     if (source === 'files') {
       const paths = utools.showOpenDialog({ title: '挂到夹子上', properties: ['openFile', 'multiSelections'] })
       if (paths && paths.length) hang(fileItems(paths), { clipId })
+    } else if (source === 'folder') {
+      // 文件夹挂成可展开的衣架
+      const paths = utools.showOpenDialog({ title: '把文件夹挂成衣架', properties: ['openDirectory'] })
+      if (paths && paths.length) hang(fileItems(paths), { clipId })
     } else if (source === 'paste') {
       const items = clipboardItems()
       if (items.length) hang(items, { clipId })
@@ -663,6 +675,7 @@ ipcRenderer.on('rug:accept', (_e, accept) => {
 
 ipcRenderer.on('rug:back', () => {
   if (rug && !rug.win.isDestroyed()) rug.win.blur()
+  log('rug-back')
 })
 
 ipcRenderer.on('rug:material', (_e, id) => {

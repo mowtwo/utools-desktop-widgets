@@ -1,0 +1,8 @@
+The ping icons (textures/) and sounds (sounds/) in this folder are © Riot Games, Inc.,
+taken from League of Legends via lolPing (https://github.com/darrenprx/lolPing).
+The sounds were re-encoded from WAV to Ogg Vorbis to reduce size.
+
+utools-desktop-widgets was created under Riot Games' "Legal Jibber Jabber" policy using
+assets owned by Riot Games. Riot Games does not endorse or sponsor this project.
+
+These assets are NOT covered by this project's MIT License.
