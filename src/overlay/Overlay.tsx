@@ -194,6 +194,7 @@ export default function Overlay() {
           timer: frameStats.timer - before.timer,
           focus: document.hasFocus(),
           slide: slideStats.current.last,
+          anchor: payloadRef.current?.renderAnchor,
         })
       }, 1000)
       if (next && (reason === 'edge' || reason.startsWith('handle'))) window.overlay?.focusOnReveal()
@@ -499,6 +500,7 @@ export default function Overlay() {
         ))}
       </div>
       {payload.debug && <DebugHud stats={slideStats} revealed={revealed} />}
+      {payload.renderAnchor && <RenderAnchor />}
       {/* 收起时屏幕顶部中间留一个小把手：碰一下就拉下来 */}
       {!shown && (
         <div
@@ -561,4 +563,22 @@ function DebugHud({ stats, revealed }: { stats: React.RefObject<{ last: string }
       className="pointer-events-none fixed right-3 bottom-3 rounded-md bg-black/70 px-2 py-1.5 font-mono text-[11px] leading-4 whitespace-pre text-white"
     />
   )
+}
+
+/**
+ * 渲染保活点：右下角 1 像素的半透明点，每 0.5 秒改一次透明度。
+ * 透明、点击穿透的悬浮层长时间没有任何重绘时，之后的变化（比如拉下晾衣绳）可能不会被画到屏幕上；
+ * 诊断面板每 0.5 秒刷新一次文字时这个问题就不出现，这里用最小的代价模拟同样的持续重绘
+ */
+function RenderAnchor() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    let on = false
+    const timer = setInterval(() => {
+      on = !on
+      if (ref.current) ref.current.style.opacity = on ? '0.51' : '0.5'
+    }, 500)
+    return () => clearInterval(timer)
+  }, [])
+  return <div ref={ref} aria-hidden className="pointer-events-none fixed right-0 bottom-0 size-px bg-neutral-500" style={{ opacity: 0.5 }} />
 }

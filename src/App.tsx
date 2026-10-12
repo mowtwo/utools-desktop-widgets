@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Activity, Bug, Focus, HeartPulse, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
+import { Activity, Bug, Focus, HeartPulse, Sparkle, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -296,6 +296,13 @@ function LinePage({ line }: { line: LineState }) {
               ))}
             </SelectContent>
           </Select>
+        </Row>
+        <Row
+          icon={<Sparkle />}
+          title="渲染保活"
+          hint="右下角放一个看不见的 1 像素点持续小幅重绘，修复拉下后晾衣绳不显示"
+        >
+          <Switch checked={line.renderAnchor} onCheckedChange={services.setRenderAnchor} />
         </Row>
         {line.mode === 'auto' && (
           <Row

@@ -49,6 +49,8 @@ const defaultState = {
   hideDelay: 800,
   /** 每个扩展在悬浮层里的运行报错：{ [extId]: [{ time, message, line, fatal, count }] }，每个最多留 20 条 */
   extErrors: {},
+  /** 渲染保活点：悬浮层持续小幅重绘，避免拉下后不显示 */
+  renderAnchor: true,
   /** 试验：用户拉下晾衣绳时让悬浮层获得焦点，换取正常的渲染帧率，代价是抢走当前窗口的键盘焦点 */
   focusOnReveal: false,
   /** 开发模式下的诊断面板，默认关 */
@@ -156,6 +158,7 @@ function snapshot() {
     debugHud: state.debugHud,
     extErrors: state.extErrors,
     focusOnReveal: state.focusOnReveal,
+    renderAnchor: state.renderAnchor,
     items: viewItems(),
     extensions,
   }
@@ -178,6 +181,7 @@ function pushToOverlay() {
     hideDelay: state.hideDelay,
     extensions,
     debug: state.debugHud && utools.isDev(),
+    renderAnchor: state.renderAnchor,
   })
 }
 
@@ -555,6 +559,7 @@ window.services = {
   setHideDelay: (hideDelay) => update({ hideDelay }),
   setDebugHud: (debugHud) => update({ debugHud }),
   setFocusOnReveal: (focusOnReveal) => update({ focusOnReveal }),
+  setRenderAnchor: (renderAnchor) => update({ renderAnchor }),
   setDisplay: (displayId) => update({ displayId }),
   /** 首次启动时写入内置扩展；数据库里已有同名文档（比如别的设备同步过来）就跳过 */
   seedExtensions(builtins) {

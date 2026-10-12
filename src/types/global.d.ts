@@ -41,6 +41,7 @@ interface Window {
     setHideDelay(ms: number): void
     setDebugHud(on: boolean): void
     setFocusOnReveal(on: boolean): void
+    setRenderAnchor(on: boolean): void
     seedExtensions(builtins: import('@/widget/runtime').WidgetExtension[]): void
     saveExtension(ext: Omit<import('@/widget/runtime').WidgetExtension, 'id'> & { id?: string }): string
     removeExtension(id: string): void

@@ -15,6 +15,7 @@ const fallback: LineState = {
   debugHud: false,
   extErrors: {},
   focusOnReveal: false,
+  renderAnchor: true,
   items: [],
   extensions: [],
 }

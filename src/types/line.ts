@@ -86,6 +86,8 @@ export interface LineState {
   extErrors: Record<string, ExtError[]>
   /** 试验：拉下时让悬浮层获得焦点 */
   focusOnReveal: boolean
+  /** 渲染保活点 */
+  renderAnchor: boolean
   items: LineItem[]
   extensions: WidgetExtension[]
 }
@@ -117,6 +119,8 @@ export interface OverlayPayload {
   extensions: WidgetExtension[]
   /** 开发模式下显示诊断面板 */
   debug: boolean
+  /** 渲染保活点 */
+  renderAnchor: boolean
 }
 
 export interface ExtError {
