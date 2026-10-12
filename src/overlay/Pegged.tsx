@@ -187,7 +187,8 @@ export function Pegged({ item, bind, onPinDown, kick }: Props) {
   return (
     <div
       ref={rootRef}
-      className="absolute top-0 left-0"
+      // 外层不接收鼠标，只有 data-hit 的部分接收：否则相邻挂件的透明外框会盖住彼此的夹子和按钮
+      className="pointer-events-none absolute top-0 left-0 [&_[data-hit]]:pointer-events-auto"
       style={{ width: CARD_WIDTH, transformOrigin: `${CARD_WIDTH / 2}px 0` }}
     >
       {/* 夹子是拖动手柄，热区比夹子本身大一圈 */}

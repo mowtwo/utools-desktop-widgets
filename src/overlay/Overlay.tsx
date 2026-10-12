@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { LineItem, OverlayPayload } from '@/types/line'
 import { applyTheme } from '@/lib/theme'
-import { cn } from '@/lib/utils'
 import { CARD_WIDTH, PANEL_HEIGHT, PIN_ABOVE, tiltOf } from './layout'
 import { Pegged } from './Pegged'
 import { Pendulum, Rope, type Load } from './physics'
@@ -28,6 +27,15 @@ const HANDLE_X = { left: 0.25, center: 0.5, right: 0.75 }
 /** 每种东西压在绳子上的分量（相对一个绳节） */
 const WEIGHT: Record<LineItem['type'], number> = { image: 10, file: 10, note: 7, clock: 8, clip: 2 }
 
+/**
+ * 安排下一帧。页面被判定为不可见时 requestAnimationFrame 完全不触发，
+ * 改用定时器推进，保证状态照样走到终点，重新出帧时能直接画出正确结果
+ */
+function schedule(cb: (time: number) => void) {
+  if (document.visibilityState === 'hidden') return window.setTimeout(() => cb(performance.now()), 16)
+  return requestAnimationFrame(cb)
+}
+
 export default function Overlay() {
   const [payload, setPayload] = useState<OverlayPayload | null>(null)
   const [revealed, setRevealed] = useState(false)
@@ -48,6 +56,13 @@ export default function Overlay() {
   const lastTime = useRef(0)
   /** 拖过的挂件叠到最上面 */
   const topZ = useRef(1)
+  // 滑入滑出也由这个循环驱动（弹簧），不用 CSS transition，方便统计到底出了几帧
+  const stripRef = useRef<HTMLDivElement>(null)
+  const payloadRef = useRef<OverlayPayload | null>(null)
+  const shownRef = useRef(false)
+  const slide = useRef({ pos: -1000, vel: 0 })
+  /** 诊断：本次滑入 / 滑出动画出了多少帧、用了多久 */
+  const slideStats = useRef({ frames: 0, start: 0, last: '' })
 
   const setInteractive = useCallback((next: boolean) => {
     if (interactive.current === next) return
@@ -61,40 +76,73 @@ export default function Overlay() {
       frame.current = 0
       return
     }
-    const dt = Math.min(1 / 30, (time - lastTime.current) / 1000 || 1 / 60)
+    // 按真实经过的时间补算（帧很稀疏时也能及时走到终点），每小步不超过 1/60s
+    let remaining = Math.min(0.5, (time - lastTime.current) / 1000 || 1 / 60)
     lastTime.current = time
     const xOf = (it: LineItem) => overrides.current.get(it.id) ?? it.x * r.width
     const loads: Load[] = items.current.map((it) => ({ x: xOf(it), weight: WEIGHT[it.type] }))
-    r.step(dt, loads)
+    const pl = payloadRef.current
+    const sl = slide.current
+    const target = pl ? (shownRef.current ? 0 : -(PANEL_HEIGHT + pl.topInset + 12)) : 0
+    if (sl.pos === -1000) sl.pos = target
+    // 滑下来带一点回弹，收起时快速、不回弹
+    const k = shownRef.current ? 260 : 600
+    const c = shownRef.current ? 2 * Math.sqrt(k) * 0.72 : 2 * Math.sqrt(k)
+
+    while (remaining > 1e-6) {
+      const dt = Math.min(1 / 60, remaining)
+      remaining -= dt
+      r.step(dt, loads)
+      for (const it of items.current) {
+        let p = pendulums.current.get(it.id)
+        if (!p) {
+          p = new Pendulum()
+          pendulums.current.set(it.id, p)
+        }
+        const x = xOf(it)
+        p.step(dt, x, r.yAt(x))
+      }
+      sl.vel += (-(sl.pos - target) * k - c * sl.vel) * dt
+      sl.pos += sl.vel * dt
+    }
 
     let resting = r.motion() < 0.5 && !drag.current
     for (const it of items.current) {
-      const el = elements.current.get(it.id)
-      let p = pendulums.current.get(it.id)
-      if (!p) {
-        p = new Pendulum()
-        pendulums.current.set(it.id, p)
-      }
-      const x = xOf(it)
-      const y = r.yAt(x)
-      p.step(dt, x, y)
+      const p = pendulums.current.get(it.id)!
       if (!p.isResting()) resting = false
-      if (el) {
-        el.style.translate = `${x - CARD_WIDTH / 2}px ${y - PIN_ABOVE - HANDLE_PAD}px`
-        el.style.rotate = `${tiltOf(it.id) + (p.angle * 180) / Math.PI}deg`
-        // 靠近屏幕边缘的淡出
-        el.style.opacity = String(Math.min(1, Math.max(0, Math.min(x, r.width - x) / 90)))
-      }
+      const el = elements.current.get(it.id)
+      if (!el) continue
+      const x = xOf(it)
+      el.style.translate = `${x - CARD_WIDTH / 2}px ${r.yAt(x) - PIN_ABOVE - HANDLE_PAD}px`
+      el.style.rotate = `${tiltOf(it.id) + (p.angle * 180) / Math.PI}deg`
+      // 靠近屏幕边缘的淡出
+      el.style.opacity = String(Math.min(1, Math.max(0, Math.min(x, r.width - x) / 90)))
     }
     if (canvasRef.current) drawRope(canvasRef.current, r)
+
+    if (pl && stripRef.current) {
+      const st = slideStats.current
+      if (Math.abs(sl.pos - target) < 0.5 && Math.abs(sl.vel) < 5) {
+        if (st.start) {
+          st.last = `${shownRef.current ? '滑入' : '收起'} ${st.frames} 帧 / ${Math.round(time - st.start)}ms`
+          st.start = 0
+        }
+        sl.pos = target
+        sl.vel = 0
+      } else {
+        resting = false
+        if (st.start) st.frames++
+      }
+      stripRef.current.style.translate = `0 ${sl.pos}px`
+    }
     // 静止后停掉循环，有新动静时再唤醒
-    frame.current = resting ? 0 : requestAnimationFrame(tick)
+    frame.current = resting ? 0 : schedule(tick)
   }, [])
 
   const wake = useCallback(() => {
     if (frame.current) return
     lastTime.current = performance.now()
-    frame.current = requestAnimationFrame(tick)
+    frame.current = schedule(tick)
   }, [tick])
 
   const reveal = useCallback(
@@ -102,6 +150,8 @@ export default function Overlay() {
       if (revealedRef.current === next) return
       revealedRef.current = next
       setRevealed(next)
+      // 透明窗口不在前台时可能不重绘，状态变化时请主界面让悬浮层整页重绘一次
+      window.overlay?.repaint()
       if (next) {
         // 滑下来时吹一阵风
         for (const p of pendulums.current.values()) p.kick((Math.random() - 0.3) * 1.4)
@@ -167,10 +217,28 @@ export default function Overlay() {
     wake()
   }, [payload, wake])
 
-  useEffect(() => () => cancelAnimationFrame(frame.current), [])
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(frame.current)
+      clearTimeout(frame.current)
+    },
+    [],
+  )
 
   const pinned = payload?.mode === 'pinned'
   const shown = pinned || revealed
+
+  useEffect(() => {
+    payloadRef.current = payload
+  }, [payload])
+
+  useEffect(() => {
+    shownRef.current = shown
+    slideStats.current.frames = 0
+    // 第一次拿到状态时直接放到终点，不算一次动画
+    slideStats.current.start = slide.current.pos === -1000 ? 0 : performance.now()
+    wake()
+  }, [shown, wake])
 
   // 自动隐藏：鼠标顶到屏幕上边缘就滑出，离开晾衣绳就收起
   useEffect(() => {
@@ -282,16 +350,10 @@ export default function Overlay() {
   return (
     <>
       <div
-        className={cn(
-          'absolute left-0 w-full transition-[translate]',
-          shown ? 'duration-[420ms] ease-[cubic-bezier(.34,1.25,.64,1)]' : 'duration-[220ms] ease-in',
-        )}
-        style={{
-          top: payload.topInset,
-          height: PANEL_HEIGHT,
-          // 收起时整根绳子藏到屏幕上边缘外面，像自动隐藏的 Dock
-          translate: `0 ${shown ? 0 : -(PANEL_HEIGHT + payload.topInset + 12)}px`,
-        }}
+        ref={stripRef}
+        // 收起时整根绳子藏到屏幕上边缘外面，像自动隐藏的 Dock；位置由物理循环每帧写入
+        className="absolute left-0 w-full"
+        style={{ top: payload.topInset, height: PANEL_HEIGHT }}
         onClick={(e) => {
           // 点绳子空白处：加一个空夹子
           if ((e.target as Element).closest('[data-hit]')) return
@@ -314,6 +376,7 @@ export default function Overlay() {
           <Pegged key={item.id} item={item} bind={bind} onPinDown={onPinDown} kick={kick} />
         ))}
       </div>
+      {window.overlay?.isDev() && <DebugHud stats={slideStats} revealed={revealed} />}
       {/* 收起时屏幕顶部中间留一个小把手：碰一下就拉下来 */}
       {!shown && (
         <div
@@ -328,5 +391,39 @@ export default function Overlay() {
         </div>
       )}
     </>
+  )
+}
+
+/** 开发模式下的诊断信息：判断滑出时是不是没出帧（页面被当成不可见、窗口不在前台等） */
+function DebugHud({ stats, revealed }: { stats: React.RefObject<{ last: string }>; revealed: boolean }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    let changes = 0
+    const render = () => {
+      if (!ref.current) return
+      ref.current.textContent = [
+        `visibility: ${document.visibilityState} (变化 ${changes} 次)`,
+        `focus: ${document.hasFocus() ? '是' : '否'}`,
+        `revealed: ${revealed ? '是' : '否'}`,
+        `上次动画: ${stats.current.last || '-'}`,
+      ].join('\n')
+    }
+    const onVis = () => {
+      changes++
+      render()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    const timer = setInterval(render, 500)
+    render()
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      clearInterval(timer)
+    }
+  }, [stats, revealed])
+  return (
+    <div
+      ref={ref}
+      className="pointer-events-none fixed right-3 bottom-3 rounded-md bg-black/70 px-2 py-1.5 font-mono text-[11px] leading-4 whitespace-pre text-white"
+    />
   )
 }

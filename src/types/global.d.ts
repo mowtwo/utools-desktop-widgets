@@ -52,6 +52,7 @@ interface Window {
     onPeek(listener: (duration?: number) => void): void
     ready(): void
     setInteractive(interactive: boolean): void
+    repaint(): void
     remove(id: string): void
     move(id: string, x: number): void
     addClip(x: number): void
@@ -65,5 +66,6 @@ interface Window {
     openExternal(url: string): Promise<void>
     startDrag(filePath: string): void
     isDarkColors(): boolean
+    isDev(): boolean
   }
 }

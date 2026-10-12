@@ -21,6 +21,10 @@ window.overlay = {
   setInteractive(interactive) {
     utools.sendToParent('overlay:interactive', interactive)
   },
+  /** 请主界面让悬浮层整页重绘 */
+  repaint() {
+    utools.sendToParent('overlay:repaint')
+  },
   remove(id) {
     utools.sendToParent('overlay:remove', id)
   },
@@ -54,4 +58,5 @@ window.overlay = {
   openExternal: (url) => utools.shellOpenExternal(url),
   startDrag: (filePath) => utools.startDrag(filePath),
   isDarkColors: () => utools.isDarkColors(),
+  isDev: () => utools.isDev(),
 }

@@ -167,7 +167,8 @@ function openOverlay(display) {
       roundedCorners: false,
       hasShadow: false,
       acceptFirstMouse: true,
-      webPreferences: { preload: 'overlay_preload.js' },
+      // 官方文档「全屏透明置顶窗口 / 性能注意」：透明窗口可能被降低渲染优先级，backgroundThrottling 能缓解一部分
+      webPreferences: { preload: 'overlay_preload.js', backgroundThrottling: false },
     },
     () => {
       const { win } = entry
@@ -329,6 +330,10 @@ ipcRenderer.on('overlay:ready', () => {
 ipcRenderer.on('overlay:interactive', (_e, interactive) => {
   if (!overlay || overlay.win.isDestroyed()) return
   overlay.win.setIgnoreMouseEvents(!interactive, { forward: true })
+})
+
+ipcRenderer.on('overlay:repaint', () => {
+  if (overlay && !overlay.win.isDestroyed()) overlay.win.webContents.invalidate()
 })
 
 ipcRenderer.on('overlay:remove', (_e, id) => {
