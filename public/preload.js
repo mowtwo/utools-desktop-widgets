@@ -738,7 +738,10 @@ ipcRenderer.on('rug:accept', (_e, accept) => {
 })
 
 ipcRenderer.on('rug:ready', () => {
-  if (rug) presentRug(rug, 'ready')
+  if (!rug) return
+  presentRug(rug, 'ready')
+  // 页面重新加载过（比如 WebGL 上下文丢失后恢复）：还在编辑就让它重新进入编辑
+  if (rugEditing && !rug.win.isDestroyed()) rug.win.webContents.send('rug:edit', true)
 })
 
 ipcRenderer.on('rug:end-edit', () => setRugEditing(false))

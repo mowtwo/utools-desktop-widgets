@@ -57,7 +57,24 @@ function inPolygon(x, y) {
 function setAccept(next) {
   if (next === accept) return
   accept = next
+  bridge?.log('accept', next)
   bridge?.setAccept(next)
+}
+
+// 排查「编辑后卡住」：可见性变化，以及进出编辑后几秒内的出帧情况
+document.addEventListener('visibilitychange', () => bridge?.log('visibility', document.visibilityState))
+function probeFrames(label) {
+  let frames = 0
+  const t0 = performance.now()
+  const count = () => {
+    frames++
+    if (performance.now() - t0 < 1000) requestAnimationFrame(count)
+  }
+  requestAnimationFrame(count)
+  setTimeout(() => {
+    const state = window.rugState?.()
+    bridge?.log('frames', { label, raf: frames, visibility: document.visibilityState, phase: state?.phase, focus: document.hasFocus() })
+  }, 1200)
 }
 
 // ---------- 编辑工具栏 ----------
@@ -112,6 +129,8 @@ function overToolbar(x, y) {
 
 bridge?.onEdit((on) => {
   editing = on
+  probeFrames(on ? 'edit-on' : 'edit-off')
+  setTimeout(() => probeFrames(on ? 'edit-on+3s' : 'edit-off+3s'), 3000)
   toolbar.style.display = on ? 'flex' : 'none'
   if (!on) {
     if (transform) setTransform(false, transformBtn)
@@ -127,6 +146,17 @@ setInterval(() => {
   const y = p.y - originY
   setAccept(dragging || inPolygon(x, y) || overToolbar(x, y))
 }, 33)
+
+// 地毯本体的 WebGL 上下文丢了（地毯变黑、渲染停住）：记下来并重新加载页面恢复
+document.addEventListener(
+  'webglcontextlost',
+  (e) => {
+    const main = e.target === document.querySelector('body > canvas')
+    bridge?.log('context-lost', { main })
+    if (main) setTimeout(() => location.reload(), 300)
+  },
+  true,
+)
 
 // 不加渲染保活点：全屏的 WebGL 透明窗口每次重绘都要整窗重新合成，周期性地改动会造成闪烁
 

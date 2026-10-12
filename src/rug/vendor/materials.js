@@ -1,4 +1,5 @@
-// 移植自 desktop-rug（https://github.com/josssphzhou/desktop-rug，commit 85e609f19ef1，MIT，Copyright (c) 2026 Joseph Zhou），未改动。
+// 移植自 desktop-rug（https://github.com/josssphzhou/desktop-rug，commit 85e609f19ef1，MIT，Copyright (c) 2026 Joseph Zhou）。
+// 本项目的改动：createSurface 返回的 dispose 会主动交还 WebGL 上下文（见下方注释）。
 
 // 地毯表面：Paper Shaders 的实时材质，外加一块 Canvas 画的波斯纹样。
 // 每种材质给出一张 canvas，布料网格每帧把它当贴图用，所以图案会跟着布一起弯折。
@@ -137,7 +138,9 @@ export function createSurface(id) {
     warmupMs: def.warmup ? 3000 : 1500,
     // 暂停：速度设为 0，ShaderMount 会取消自己的逐帧渲染循环，GPU 就空闲了
     setLive(on) { if (def.speed !== 0) mount.setSpeed(on ? def.speed : 0); },
-    dispose() { mount.dispose(); host.remove(); },
+    // 本项目改动：释放时主动交还 WebGL 上下文。ShaderMount.dispose 不会交还，上下文要等垃圾回收；
+    // 连续换花样会超出浏览器的上下文数量上限，被强制丢掉的是最早创建的地毯本体的上下文，地毯就黑了
+    dispose() { const gl = mount.gl; mount.dispose(); try { gl?.getExtension('WEBGL_lose_context')?.loseContext(); } catch (e) { /* 已经丢失 */ } host.remove(); },
   };
 }
 
