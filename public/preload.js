@@ -49,6 +49,8 @@ const defaultState = {
   hideDelay: 800,
   /** 每个扩展在悬浮层里的运行报错：{ [extId]: [{ time, message, line, fatal, count }] }，每个最多留 20 条 */
   extErrors: {},
+  /** 试验：用户拉下晾衣绳时让悬浮层获得焦点，换取正常的渲染帧率，代价是抢走当前窗口的键盘焦点 */
+  focusOnReveal: false,
   /** 开发模式下的诊断面板，默认关 */
   debugHud: false,
   /** 内置挂件扩展是否已写入过数据库（删掉后不再自动补回） */
@@ -153,6 +155,7 @@ function snapshot() {
     seeded: state.seeded,
     debugHud: state.debugHud,
     extErrors: state.extErrors,
+    focusOnReveal: state.focusOnReveal,
     items: viewItems(),
     extensions,
   }
@@ -490,6 +493,12 @@ ipcRenderer.on('overlay:widget-error', (_e, ext, message, line, fatal) => {
   }
 })
 
+ipcRenderer.on('overlay:focus-on-reveal', () => {
+  if (!state.focusOnReveal || !overlay || overlay.win.isDestroyed()) return
+  overlay.win.focus()
+  log('focus-on-reveal')
+})
+
 ipcRenderer.on('overlay:notify', (_e, text) => {
   utools.showNotification(String(text).slice(0, 200))
 })
@@ -545,6 +554,7 @@ window.services = {
   setHandle: (handle) => update({ handle }),
   setHideDelay: (hideDelay) => update({ hideDelay }),
   setDebugHud: (debugHud) => update({ debugHud }),
+  setFocusOnReveal: (focusOnReveal) => update({ focusOnReveal }),
   setDisplay: (displayId) => update({ displayId }),
   /** 首次启动时写入内置扩展；数据库里已有同名文档（比如别的设备同步过来）就跳过 */
   seedExtensions(builtins) {

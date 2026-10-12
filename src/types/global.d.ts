@@ -40,6 +40,7 @@ interface Window {
     setHandle(handle: import('./line').HandlePosition | null): void
     setHideDelay(ms: number): void
     setDebugHud(on: boolean): void
+    setFocusOnReveal(on: boolean): void
     seedExtensions(builtins: import('@/widget/runtime').WidgetExtension[]): void
     saveExtension(ext: Omit<import('@/widget/runtime').WidgetExtension, 'id'> & { id?: string }): string
     removeExtension(id: string): void
@@ -75,6 +76,7 @@ interface Window {
     addTodo(text: string, clipId?: string): void
     /** 让悬浮层获得键盘焦点（在夹子上直接打字时） */
     focus(): void
+    focusOnReveal(): void
     listFolder(dir: string, limit: number): { total: number; entries: import('./line').FolderEntry[]; error?: string }
     saveWidgetData(id: string, data: Record<string, unknown>): void
     notify(text: string): void

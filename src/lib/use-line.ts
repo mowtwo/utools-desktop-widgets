@@ -14,6 +14,7 @@ const fallback: LineState = {
   seeded: false,
   debugHud: false,
   extErrors: {},
+  focusOnReveal: false,
   items: [],
   extensions: [],
 }

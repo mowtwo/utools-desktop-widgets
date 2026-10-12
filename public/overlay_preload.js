@@ -124,6 +124,10 @@ window.overlay = {
   focus() {
     utools.sendToParent('overlay:focus')
   },
+  /** 用户拉下晾衣绳时：如果开了「滑出时获取焦点」，让悬浮层获得焦点（官方文档建议的保证渲染帧率的做法） */
+  focusOnReveal() {
+    utools.sendToParent('overlay:focus-on-reveal')
+  },
   /** 挂件 api.storage 的数据交给主界面保存 */
   saveWidgetData(id, data) {
     utools.sendToParent('overlay:widget-data', id, data)

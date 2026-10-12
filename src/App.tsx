@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Activity, Bug, HeartPulse, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
+import { Activity, Bug, Focus, HeartPulse, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -297,6 +297,15 @@ function LinePage({ line }: { line: LineState }) {
             </SelectContent>
           </Select>
         </Row>
+        {line.mode === 'auto' && (
+          <Row
+            icon={<Focus />}
+            title="滑出时获取焦点（试验）"
+            hint="拉下来却看不到晾衣绳时试试：动画更可靠，但会抢走当前窗口的键盘焦点"
+          >
+            <Switch checked={line.focusOnReveal} onCheckedChange={services.setFocusOnReveal} />
+          </Row>
+        )}
         {window.utools?.isDev() && (
           <Row icon={<Activity />} title="诊断面板" hint="仅开发模式：悬浮层右下角显示可见性和动画帧数">
             <Switch checked={line.debugHud} onCheckedChange={services.setDebugHud} />

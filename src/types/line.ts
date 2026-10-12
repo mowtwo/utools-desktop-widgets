@@ -84,6 +84,8 @@ export interface LineState {
   debugHud: boolean
   /** 每个扩展在悬浮层里的运行报错 */
   extErrors: Record<string, ExtError[]>
+  /** 试验：拉下时让悬浮层获得焦点 */
+  focusOnReveal: boolean
   items: LineItem[]
   extensions: WidgetExtension[]
 }

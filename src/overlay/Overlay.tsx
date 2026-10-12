@@ -35,13 +35,31 @@ const HANDLE_X = { left: 0.25, center: 0.5, right: 0.75 }
 /** 每种东西压在绳子上的分量（相对一个绳节） */
 const WEIGHT: Record<LineItem['type'], number> = { image: 10, file: 10, note: 7, widget: 8, todo: 4, clip: 2 }
 
+/** 帧统计：排查「拉下来了但没画出来」——动画帧回调和定时器各跑了几次 */
+const frameStats = { raf: 0, timer: 0 }
+
 /**
- * 安排下一帧。页面被判定为不可见时 requestAnimationFrame 完全不触发，
- * 改用定时器推进，保证状态照样走到终点，重新出帧时能直接画出正确结果
+ * 安排下一帧：同时挂动画帧回调和定时器，谁先到谁执行，另一个作废。
+ * 悬浮层不在前台时 Chromium 可能停掉动画帧回调（页面仍报告 visible），
+ * 靠定时器也能把状态推进到终点
  */
 function schedule(cb: (time: number) => void) {
-  if (document.visibilityState === 'hidden') return window.setTimeout(() => cb(performance.now()), 16)
-  return requestAnimationFrame(cb)
+  let done = false
+  const run = (via: 'raf' | 'timer') => {
+    if (done) return
+    done = true
+    cancelAnimationFrame(raf)
+    clearTimeout(timer)
+    frameStats[via]++
+    cb(performance.now())
+  }
+  const raf = requestAnimationFrame(() => run('raf'))
+  const timer = window.setTimeout(() => run('timer'), 34)
+  return () => {
+    done = true
+    cancelAnimationFrame(raf)
+    clearTimeout(timer)
+  }
 }
 
 export default function Overlay() {
@@ -67,7 +85,7 @@ export default function Overlay() {
   /** 拖动中、或刚松手还没等到新状态时的位置（px） */
   const overrides = useRef(new Map<string, number>())
   const drag = useRef<{ id: string; offset: number; startX: number; moved: boolean } | null>(null)
-  const frame = useRef(0)
+  const frame = useRef<(() => void) | null>(null)
   const lastTime = useRef(0)
   /** 正在把文件拖到别的应用，到这个时间点之前保持绳子展开、窗口可交互 */
   const dragOutUntil = useRef(0)
@@ -91,7 +109,7 @@ export default function Overlay() {
   const tick = useCallback((time: number) => {
     const r = rope.current
     if (!r) {
-      frame.current = 0
+      frame.current = null
       return
     }
     // 按真实经过的时间补算（帧很稀疏时也能及时走到终点），每小步不超过 1/60s
@@ -154,7 +172,7 @@ export default function Overlay() {
       stripRef.current.style.translate = `0 ${sl.pos}px`
     }
     // 静止后停掉循环，有新动静时再唤醒
-    frame.current = resting ? 0 : schedule(tick)
+    frame.current = resting ? null : schedule(tick)
   }, [])
 
   const wake = useCallback(() => {
@@ -166,7 +184,19 @@ export default function Overlay() {
   const reveal = useCallback(
     (next: boolean, reason = '') => {
       if (revealedRef.current === next) return
-      window.overlay?.log(next ? 'reveal' : 'hide', { reason, visibility: document.visibilityState })
+      window.overlay?.log(next ? 'reveal' : 'hide', { reason, visibility: document.visibilityState, focus: document.hasFocus() })
+      // 拉下后 1 秒统计出帧情况：raf 很少而 timer 很多，说明动画帧回调被卡住了
+      const before = { ...frameStats }
+      setTimeout(() => {
+        window.overlay?.log('frames-1s', {
+          after: next ? 'reveal' : 'hide',
+          raf: frameStats.raf - before.raf,
+          timer: frameStats.timer - before.timer,
+          focus: document.hasFocus(),
+          slide: slideStats.current.last,
+        })
+      }, 1000)
+      if (next && (reason === 'edge' || reason.startsWith('handle'))) window.overlay?.focusOnReveal()
       revealedRef.current = next
       setRevealed(next)
       // 透明窗口不在前台时可能不重绘，状态变化时请主界面让悬浮层整页重绘一次
@@ -274,8 +304,7 @@ export default function Overlay() {
 
   useEffect(
     () => () => {
-      cancelAnimationFrame(frame.current)
-      clearTimeout(frame.current)
+      frame.current?.()
     },
     [],
   )
