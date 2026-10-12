@@ -10,8 +10,11 @@ const fallback: LineState = {
   maxItems: 12,
   handle: null,
   notch: false,
-  clock: true,
+  hideDelay: 800,
+  seeded: false,
+  debugHud: false,
   items: [],
+  extensions: [],
 }
 
 let cached: LineState = window.services?.getState() ?? fallback

@@ -26,13 +26,22 @@ const defaultState = {
   mode: 'auto',
   /** 用户选择的屏幕；null 表示主屏 */
   displayId: null,
-  /** 最多挂几件（只算图片、便签、文件，不算时钟和空夹子） */
+  /** 最多挂几件（只算图片、便签、文件，不算挂件和空夹子） */
   maxItems: 12,
   /** 收起后小把手的位置：left / center / right；null 表示自动（刘海屏放右边） */
   handle: null,
+  /** 自动隐藏：鼠标离开多久后收起（ms） */
+  hideDelay: 800,
+  /** 开发模式下的诊断面板，默认关 */
+  debugHud: false,
+  /** 内置挂件扩展是否已写入过数据库（删掉后不再自动补回） */
+  seeded: false,
   /** 每件都有 x：在绳子上的位置，占绳长的比例 */
-  items: [{ id: 'clock', type: 'clock', x: 0.12, createdAt: 0 }],
+  items: [{ id: 'clock', type: 'widget', ext: 'clock', x: 0.12, createdAt: 0 }],
 }
+
+/** 挂件扩展存同步数据库：用户自己写的脚本，换设备也要在（见官方文档「数据存储 / 用户数据」） */
+const EXT_PREFIX = 'ext/'
 
 const clampX = (x) => Math.min(X_MAX, Math.max(X_MIN, x))
 
@@ -58,6 +67,8 @@ function loadState() {
       if (saved.clock && !state.items.some((it) => it.type === 'clock')) state.items.push({ ...defaultState.items[0] })
       delete state.clock
     }
+    // 旧版本的时钟类型改成「时钟」挂件扩展的实例
+    state.items = state.items.map((it) => (it.type === 'clock' ? { ...it, type: 'widget', ext: 'clock' } : it))
     return state
   } catch {
     return { ...defaultState, items: [...defaultState.items] }
@@ -66,6 +77,21 @@ function loadState() {
 
 let state = loadState()
 const listeners = new Set()
+
+function loadExtensions() {
+  return utools.db.allDocs(EXT_PREFIX).map((d) => ({
+    id: d._id.slice(EXT_PREFIX.length),
+    name: d.name,
+    code: d.code,
+    width: d.width,
+    height: d.height,
+    settings: d.settings,
+    builtin: !!d.builtin,
+    updatedAt: d.updatedAt,
+  }))
+}
+
+let extensions = loadExtensions()
 
 /** 悬浮层：{ win, displayId, ready } */
 let overlay = null
@@ -83,13 +109,14 @@ function resolveDisplay() {
 }
 
 /** 给前端和悬浮层看的视图：图片路径转成 file:// 地址 */
+function isImagePath(p) {
+  return IMAGE_EXTS.includes(path.extname(p).slice(1).toLowerCase())
+}
+
 function viewItems() {
   return state.items.map((it) => {
     if (it.type === 'image') return { ...it, src: pathToFileURL(it.path).href }
-    if (it.type === 'file') {
-      const isImage = IMAGE_EXTS.includes(path.extname(it.path).slice(1).toLowerCase())
-      return { ...it, src: isImage ? pathToFileURL(it.path).href : null }
-    }
+    if (it.type === 'file') return { ...it, src: !it.isDirectory && isImagePath(it.path) ? pathToFileURL(it.path).href : null }
     return it
   })
 }
@@ -105,8 +132,11 @@ function snapshot() {
     maxItems: state.maxItems,
     handle: state.handle,
     notch: hasNotch(display),
-    clock: state.items.some((it) => it.type === 'clock'),
+    hideDelay: state.hideDelay,
+    seeded: state.seeded,
+    debugHud: state.debugHud,
     items: viewItems(),
+    extensions,
   }
 }
 
@@ -124,6 +154,9 @@ function pushToOverlay() {
     topInset: display.workArea.y - display.bounds.y,
     notch: hasNotch(display),
     handle: state.handle || (hasNotch(display) ? 'right' : 'center'),
+    hideDelay: state.hideDelay,
+    extensions,
+    debug: state.debugHud && utools.isDev(),
   })
 }
 
@@ -279,6 +312,29 @@ function hang(newItems, at = {}) {
   ipcSend('overlay:peek')
 }
 
+function extDoc(ext) {
+  return {
+    name: String(ext.name || '未命名').slice(0, 40),
+    code: String(ext.code || ''),
+    width: Number(ext.width) || 136,
+    height: Number(ext.height) || 64,
+    settings: String(ext.settings || ''),
+    updatedAt: Date.now(),
+  }
+}
+
+/** 快速便签最多几个字，与前端 TODO_MAX 一致 */
+const TODO_MAX = 30
+
+function todoItem(text) {
+  const t = Array.from(String(text).replace(/\s+/g, ' ').trim()).slice(0, TODO_MAX).join('')
+  return t ? { id: randomUUID(), type: 'todo', text: t, createdAt: Date.now() } : null
+}
+
+function widgetItem(ext) {
+  return { id: randomUUID(), type: 'widget', ext, data: {}, createdAt: Date.now() }
+}
+
 function imageItem(dataUrl) {
   const match = /^data:image\/(\w+);base64,(.+)$/.exec(dataUrl)
   if (!match) throw new Error('不支持的图片数据')
@@ -299,14 +355,18 @@ function noteItem(text) {
 function fileItems(paths) {
   return paths
     .filter((p) => fs.existsSync(p))
-    .map((p) => ({
-      id: randomUUID(),
-      type: 'file',
-      path: p,
-      name: path.basename(p),
-      icon: utools.getFileIcon(p),
-      createdAt: Date.now(),
-    }))
+    .map((p) => {
+      const isDirectory = fs.statSync(p).isDirectory()
+      return {
+        id: randomUUID(),
+        type: 'file',
+        path: p,
+        name: path.basename(p),
+        isDirectory,
+        icon: utools.getFileIcon(isDirectory ? 'folder' : p),
+        createdAt: Date.now(),
+      }
+    })
 }
 
 /** 剪贴板里的东西：文件 > 图片 > 文字 */
@@ -359,6 +419,8 @@ ipcRenderer.on('overlay:fill-clip', async (_e, clipId, source) => {
       else utools.showNotification('剪贴板里没有能挂的东西')
     } else if (source === 'capture') {
       hang([imageItem(await utools.screenCapture())], { clipId })
+    } else if (source.startsWith('widget:')) {
+      hang([widgetItem(source.slice('widget:'.length))], { clipId })
     }
   } catch {
     // 用户取消截图或选择
@@ -367,6 +429,33 @@ ipcRenderer.on('overlay:fill-clip', async (_e, clipId, source) => {
 
 ipcRenderer.on('overlay:drop', (_e, paths, x, clipId) => {
   hang(fileItems(paths), clipId ? { clipId } : { x })
+})
+
+// 挂件 api.storage 的数据：只落盘，不广播（挂件自己已经有最新数据，广播会让它重建）
+ipcRenderer.on('overlay:widget-data', (_e, id, data) => {
+  state = { ...state, items: state.items.map((it) => (it.id === id ? { ...it, data } : it)) }
+  saveState()
+})
+
+ipcRenderer.on('overlay:add-todo', (_e, text, clipId) => {
+  const item = todoItem(text)
+  if (item) hang([item], clipId ? { clipId } : {})
+})
+
+// 在夹子上直接写待办时需要键盘焦点，这会把 uTools 切到前台
+ipcRenderer.on('overlay:focus', () => {
+  if (overlay && !overlay.win.isDestroyed()) overlay.win.focus()
+})
+
+ipcRenderer.on('overlay:notify', (_e, text) => {
+  utools.showNotification(String(text).slice(0, 200))
+})
+
+// 其他设备同步过来新的扩展
+utools.onDbPull((docs) => {
+  if (!docs.some((d) => d._id.startsWith(EXT_PREFIX))) return
+  extensions = loadExtensions()
+  emit()
 })
 
 window.services = {
@@ -399,11 +488,44 @@ window.services = {
   setEnabled: (enabled) => update({ enabled }),
   setMode: (mode) => update({ mode }),
   setHandle: (handle) => update({ handle }),
+  setHideDelay: (hideDelay) => update({ hideDelay }),
+  setDebugHud: (debugHud) => update({ debugHud }),
   setDisplay: (displayId) => update({ displayId }),
-  setClock(on) {
-    const items = state.items.filter((it) => it.type !== 'clock')
-    if (on) items.push({ id: 'clock', type: 'clock', x: freeX(), createdAt: 0 })
-    update({ items })
+  /** 首次启动时写入内置扩展；数据库里已有同名文档（比如别的设备同步过来）就跳过 */
+  seedExtensions(builtins) {
+    if (state.seeded) return
+    for (const ext of builtins) {
+      if (!utools.db.get(EXT_PREFIX + ext.id)) {
+        utools.db.put({ _id: EXT_PREFIX + ext.id, ...extDoc(ext), builtin: true })
+      }
+    }
+    extensions = loadExtensions()
+    update({ seeded: true })
+  },
+  /** 新建或保存扩展，返回扩展 id */
+  saveExtension(ext) {
+    const id = ext.id || randomUUID()
+    const existing = utools.db.get(EXT_PREFIX + id)
+    const result = utools.db.put({
+      _id: EXT_PREFIX + id,
+      ...(existing ? { _rev: existing._rev, builtin: existing.builtin } : {}),
+      ...extDoc(ext),
+    })
+    if (result.error) throw new Error(result.message || '保存失败')
+    extensions = loadExtensions()
+    emit()
+    return id
+  },
+  /** 删除扩展，同时取下绳上它的所有实例 */
+  removeExtension(id) {
+    utools.db.remove(EXT_PREFIX + id)
+    extensions = loadExtensions()
+    update({ items: state.items.filter((it) => !(it.type === 'widget' && it.ext === id)) })
+  },
+  hangWidget: (ext) => hang([widgetItem(ext)]),
+  addTodo(text) {
+    const item = todoItem(text)
+    if (item) hang([item])
   },
   setMaxItems(maxItems) {
     const content = state.items.filter((it) => CONTENT_TYPES.includes(it.type)).sort((a, b) => b.createdAt - a.createdAt)
@@ -423,10 +545,10 @@ window.services = {
     removeOwnedFile(item)
     update({ items: state.items.filter((it) => it.id !== id) })
   },
-  /** 取下所有图片、便签、文件和空夹子，时钟留着 */
+  /** 取下所有图片、便签、文件和空夹子，挂件留着 */
   clearItems() {
     for (const it of state.items) removeOwnedFile(it)
-    update({ items: state.items.filter((it) => it.type === 'clock') })
+    update({ items: state.items.filter((it) => it.type === 'widget') })
   },
   /** 开发模式下打开悬浮层的开发者工具 */
   openOverlayDevTools() {

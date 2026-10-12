@@ -8,8 +8,11 @@ import { drawRope } from './Rope'
 
 /** 鼠标在屏幕最上边缘停留多久后滑出 */
 const REVEAL_DWELL_MS = 250
-/** 鼠标离开晾衣绳多久后收起 */
-const HIDE_DELAY_MS = 350
+/** 光标轮询间隔：展开、拖拽中或靠近屏幕顶部时要灵敏，其余时候放慢（ms） */
+const POLL_FAST = 60
+const POLL_IDLE = 150
+/** 光标离屏幕顶部多近算「靠近」（px） */
+const NEAR_TOP = 80
 /** 拖文件出去时，光标停住多久算拖拽结束 */
 const DRAG_OUT_STILL_MS = 1200
 /** 拖文件出去最多保持展开多久 */
@@ -29,7 +32,7 @@ const NOTCH_HALF = 130
 const HANDLE_X = { left: 0.25, center: 0.5, right: 0.75 }
 
 /** 每种东西压在绳子上的分量（相对一个绳节） */
-const WEIGHT: Record<LineItem['type'], number> = { image: 10, file: 10, note: 7, clock: 8, clip: 2 }
+const WEIGHT: Record<LineItem['type'], number> = { image: 10, file: 10, note: 7, widget: 8, todo: 4, clip: 2 }
 
 /**
  * 安排下一帧。页面被判定为不可见时 requestAnimationFrame 完全不触发，
@@ -43,6 +46,7 @@ function schedule(cb: (time: number) => void) {
 export default function Overlay() {
   const [payload, setPayload] = useState<OverlayPayload | null>(null)
   const [revealed, setRevealed] = useState(false)
+  const [dark, setDark] = useState(false)
   const interactive = useRef(false)
   const revealedRef = useRef(false)
   const peekUntil = useRef(0)
@@ -182,6 +186,8 @@ export default function Overlay() {
     dragOutUntil.current = Date.now() + DRAG_OUT_MAX_MS
   }, [])
 
+  const revealedOrPinned = () => revealedRef.current || payloadRef.current?.mode === 'pinned'
+
   const kick = useCallback(
     (id: string, amount: number) => {
       pendulums.current.get(id)?.kick(amount)
@@ -192,7 +198,9 @@ export default function Overlay() {
 
   useEffect(() => {
     window.overlay?.onState((p) => {
-      applyTheme(window.overlay?.isDarkColors())
+      const isDark = !!window.overlay?.isDarkColors()
+      applyTheme(isDark)
+      setDark(isDark)
       setPayload(p)
     })
     window.overlay?.onPeek((duration) => {
@@ -250,19 +258,38 @@ export default function Overlay() {
     wake()
   }, [shown, wake])
 
-  // 自动隐藏：鼠标顶到屏幕上边缘就滑出，离开晾衣绳就收起
+  // 轮询光标（两种模式都跑）：
+  // - 拖文件出去时，按光标位置决定接不接收落点：在绳子区域里就接收（挂到绳上），否则点击穿透交给下面的应用
+  // - 自动隐藏：鼠标顶到屏幕上边缘就滑出，离开晾衣绳就收起
   useEffect(() => {
-    if (!payload || pinned) return
-    const { bounds, topInset, notch } = payload
+    if (!payload) return
+    const { bounds, topInset, notch, hideDelay } = payload
     const center = bounds.x + bounds.width / 2
     let edgeSince = 0
     let awaySince = 0
     let lastX = 0
     let lastY = 0
     let stillSince = 0
+    /** 光标是否在挂着的东西上（包括展开到绳子区域以下的衣架、菜单） */
+    const overHit = (p: { x: number; y: number }) =>
+      !!document.elementFromPoint(p.x - bounds.x, p.y - bounds.y)?.closest('[data-hit]')
     return window.overlay?.watchCursor((p) => {
       const now = Date.now()
       const inside = p.x >= bounds.x && p.x < bounds.x + bounds.width && p.y >= bounds.y && p.y < bounds.y + bounds.height
+      const inStrip = inside && p.y < bounds.y + topInset + PANEL_HEIGHT
+
+      // 正在拖文件出去：系统拖拽结束不会通知网页，按光标停住判断拖拽已经结束
+      if (now < dragOutUntil.current) {
+        if (p.x !== lastX || p.y !== lastY) stillSince = now
+        else if (now - stillSince > DRAG_OUT_STILL_MS) dragOutUntil.current = 0
+        lastX = p.x
+        lastY = p.y
+        awaySince = 0
+        setInteractive(inStrip && revealedOrPinned())
+        return POLL_FAST
+      }
+      if (pinned) return POLL_IDLE
+
       if (!revealedRef.current) {
         awaySince = 0
         // 刘海那一段不触发：鼠标推进刘海通常是想用刘海里的东西
@@ -273,27 +300,20 @@ export default function Overlay() {
         } else {
           edgeSince = 0
         }
-        return
+        return inside && p.y - bounds.y < NEAR_TOP ? POLL_FAST : POLL_IDLE
       }
       edgeSince = 0
-      // 正在拖文件出去：系统拖拽结束不会通知网页，按光标停住判断拖拽已经结束
-      if (now < dragOutUntil.current) {
-        if (p.x !== lastX || p.y !== lastY) stillSince = now
-        else if (now - stillSince > DRAG_OUT_STILL_MS) dragOutUntil.current = 0
-        lastX = p.x
-        lastY = p.y
-        awaySince = 0
-        return
-      }
-      const away = !inside || p.y > bounds.y + topInset + PANEL_HEIGHT + 30
+      const away = !inside || (p.y > bounds.y + topInset + PANEL_HEIGHT + 30 && !overHit(p))
       if (away && now >= peekUntil.current && !drag.current) {
         awaySince ||= now
-        if (now - awaySince >= HIDE_DELAY_MS) reveal(false)
+        if (now - awaySince >= hideDelay) reveal(false)
       } else {
         awaySince = 0
       }
+      return POLL_FAST
     })
-  }, [payload, pinned, reveal])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload, pinned, reveal, setInteractive])
 
   const nearRope = (clientX: number, clientY: number) => {
     if (!rope.current || !payload) return false
@@ -396,10 +416,20 @@ export default function Overlay() {
           </div>
         )}
         {payload.items.map((item) => (
-          <Pegged key={item.id} item={item} bind={bind} onPinDown={onPinDown} kick={kick} onDragOut={onDragOut} />
+          <Pegged
+            key={item.id}
+            item={item}
+            extension={item.type === 'widget' ? payload.extensions.find((e) => e.id === item.ext) : undefined}
+            extensions={payload.extensions}
+            themeKey={dark}
+            bind={bind}
+            onPinDown={onPinDown}
+            kick={kick}
+            onDragOut={onDragOut}
+          />
         ))}
       </div>
-      {window.overlay?.isDev() && <DebugHud stats={slideStats} revealed={revealed} />}
+      {payload.debug && <DebugHud stats={slideStats} revealed={revealed} />}
       {/* 收起时屏幕顶部中间留一个小把手：碰一下就拉下来 */}
       {!shown && (
         <div

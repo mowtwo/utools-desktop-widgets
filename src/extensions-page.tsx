@@ -1,0 +1,255 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { BookOpen, Plus, Puzzle, Save, Send, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { CodeEditor } from '@/components/code-editor'
+import { API_DOCS, CSS_HELPERS, TEMPLATE } from '@/widget/builtins'
+import type { WidgetExtension } from '@/widget/runtime'
+import { WidgetFrame, type WidgetHost } from '@/widget/WidgetFrame'
+import { cn } from '@/lib/utils'
+
+type Draft = Omit<WidgetExtension, 'id'> & { id?: string }
+
+const toDraft = (ext: WidgetExtension): Draft => ({ ...ext })
+
+/** 停止输入一会儿后再刷新预览，免得每敲一个字都重建沙箱 */
+function useDebounced<T>(value: T, ms: number) {
+  const [v, setV] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setV(value), ms)
+    return () => clearTimeout(timer)
+  }, [value, ms])
+  return v
+}
+
+export function ExtensionsPage({ extensions, dark }: { extensions: WidgetExtension[]; dark: boolean }) {
+  const services = window.services!
+  const [selected, setSelected] = useState<string | null>(extensions[0]?.id ?? null)
+  const [draft, setDraft] = useState<Draft | null>(() => (extensions[0] ? toDraft(extensions[0]) : null))
+  const [dirty, setDirty] = useState(false)
+  /** 预览报的错，按预览内容分组：代码一改旧错误就不再显示 */
+  const [errorLog, setErrorLog] = useState<{ key: string; list: string[] }>({ key: '', list: [] })
+  const [showDocs, setShowDocs] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const edit = (patch: Partial<Draft>) => {
+    setDraft((d) => (d ? { ...d, ...patch } : d))
+    setDirty(true)
+  }
+
+  const save = (): string | null => {
+    if (!draft) return null
+    try {
+      const id = services.saveExtension(draft)
+      setDraft((d) => (d ? { ...d, id } : d))
+      setSelected(id)
+      setDirty(false)
+      return id
+    } catch (e) {
+      setMessage(`保存失败：${(e as Error).message}`)
+      return null
+    }
+  }
+
+  const select = (ext: WidgetExtension) => {
+    // 切换前自动保存当前的改动
+    if (dirty) save()
+    setSelected(ext.id)
+    setDraft(toDraft(ext))
+    setDirty(false)
+    setConfirmDelete(false)
+  }
+
+  const create = () => {
+    if (dirty) save()
+    setSelected(null)
+    setDraft({ ...TEMPLATE })
+    setDirty(true)
+  }
+
+  // ⌘S / Ctrl+S 保存
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        save()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  useEffect(() => {
+    if (!message) return
+    const timer = setTimeout(() => setMessage(null), 2000)
+    return () => clearTimeout(timer)
+  }, [message])
+
+  const preview = useDebounced(draft, 500)
+  const previewKey = `${preview?.code}\u0000${preview?.settings}`
+  const previewKeyRef = useRef(previewKey)
+  useEffect(() => {
+    previewKeyRef.current = previewKey
+  }, [previewKey])
+  const errors = errorLog.key === previewKey ? errorLog.list : []
+
+  const host = useMemo<WidgetHost>(
+    () => ({
+      copy: (text) => window.utools?.copyText(text),
+      open: (url) => void window.utools?.shellOpenExternal(url),
+      notify: (text) => window.utools?.showNotification(text),
+      onError: (msg, line) =>
+        setErrorLog((log) => {
+          const key = previewKeyRef.current
+          const list = log.key === key ? log.list : []
+          return { key, list: [...list.slice(-4), line ? `第 ${line} 行：${msg}` : msg] }
+        }),
+    }),
+    [],
+  )
+
+  return (
+    <div className="flex h-full min-h-0 gap-4">
+      <aside className="flex w-40 shrink-0 flex-col gap-1">
+        {extensions.map((ext) => (
+          <button
+            key={ext.id}
+            onClick={() => select(ext)}
+            className={cn(
+              'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-muted',
+              selected === ext.id && 'bg-muted font-medium',
+            )}
+          >
+            <Puzzle className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{ext.name}</span>
+          </button>
+        ))}
+        <Button variant="ghost" size="sm" className="justify-start" onClick={create}>
+          <Plus /> 新建挂件
+        </Button>
+      </aside>
+
+      {draft ? (
+        <section className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <Input className="flex-1" value={draft.name} onChange={(e) => edit({ name: e.target.value })} placeholder="挂件名称" />
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">
+              宽
+              <Input
+                type="number"
+                className="w-16"
+                value={draft.width}
+                onChange={(e) => edit({ width: Number(e.target.value) })}
+              />
+            </label>
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">
+              高
+              <Input
+                type="number"
+                className="w-16"
+                value={draft.height}
+                onChange={(e) => edit({ height: Number(e.target.value) })}
+              />
+            </label>
+          </div>
+
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_180px] gap-3">
+            <div className="flex min-h-0 flex-col gap-2">
+              <CodeEditor className="min-h-0 flex-1" value={draft.code} onChange={(code) => edit({ code })} dark={dark} />
+              <div className="text-xs font-medium text-muted-foreground">设置（JSON，脚本里用 api.settings 读取）</div>
+              <CodeEditor
+                className="h-24 shrink-0"
+                json
+                value={draft.settings}
+                onChange={(settings) => edit({ settings })}
+                dark={dark}
+              />
+            </div>
+
+            <div className="flex min-h-0 flex-col gap-2">
+              <div className="text-xs font-medium text-muted-foreground">预览</div>
+              <div className="flex min-h-36 items-center justify-center rounded-lg border bg-[linear-gradient(135deg,#bae6fd,#e9d5ff)] p-3 dark:bg-[linear-gradient(135deg,#1e293b,#312e81)]">
+                {preview && (
+                  <div className="rounded-[16px] border border-white/50 bg-background/85 p-1 shadow dark:border-white/15">
+                    <WidgetFrame ext={preview} host={host} themeKey={dark} />
+                  </div>
+                )}
+              </div>
+              {errors.length > 0 && (
+                <div className="max-h-28 overflow-auto rounded-md bg-destructive/10 p-2 font-mono text-[11px] text-destructive">
+                  {errors.map((e, i) => (
+                    <div key={i}>{e}</div>
+                  ))}
+                </div>
+              )}
+              <Button variant="ghost" size="sm" className="justify-start" onClick={() => setShowDocs(!showDocs)}>
+                <BookOpen /> API 说明
+              </Button>
+              {showDocs && (
+                <div className="min-h-0 flex-1 overflow-auto rounded-md border p-2 text-[11px] leading-relaxed">
+                  {API_DOCS.map((d) => (
+                    <div key={d.name} className="mb-1.5">
+                      <code className="font-mono text-foreground">{d.signature}</code>
+                      <div className="text-muted-foreground">{d.doc}</div>
+                    </div>
+                  ))}
+                  <div className="mt-2 text-muted-foreground">{CSS_HELPERS}</div>
+                  <div className="mt-2 text-muted-foreground">
+                    挂件在沙箱里运行，不能访问本地文件和插件的其他数据；需要的话用 fetch 请求允许跨域的网络接口。
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button onClick={() => save() && setMessage('已保存')} disabled={!dirty}>
+              <Save /> 保存{dirty && ' *'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const id = dirty || !draft.id ? save() : draft.id
+                if (id) {
+                  services.hangWidget(id)
+                  setMessage('已挂到绳子上')
+                }
+              }}
+            >
+              <Send /> 挂到绳子上
+            </Button>
+            {message && <span className="text-xs text-muted-foreground">{message}</span>}
+            <div className="flex-1" />
+            {draft.id && (
+              <Button
+                variant={confirmDelete ? 'destructive' : 'ghost'}
+                onClick={() => {
+                  if (!confirmDelete) {
+                    setConfirmDelete(true)
+                    return
+                  }
+                  services.removeExtension(draft.id!)
+                  const next = extensions.find((e) => e.id !== draft.id)
+                  setSelected(next?.id ?? null)
+                  setDraft(next ? toDraft(next) : null)
+                  setDirty(false)
+                  setConfirmDelete(false)
+                }}
+              >
+                <Trash2 /> {confirmDelete ? '再点一次删除（绳上的实例也会取下）' : '删除'}
+              </Button>
+            )}
+          </div>
+        </section>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+          还没有挂件扩展
+          <Button variant="outline" size="sm" onClick={create}>
+            <Plus /> 新建一个
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}

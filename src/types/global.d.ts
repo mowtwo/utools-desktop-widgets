@@ -23,6 +23,8 @@ interface UToolsApi {
   screenCapture(): Promise<string>
   showOpenDialog(options: { title?: string; properties?: string[] }): string[] | undefined
   startDrag(filePath: string | string[]): void
+  copyText(text: string): boolean
+  shellOpenExternal(url: string): Promise<void>
 }
 
 interface Window {
@@ -36,8 +38,14 @@ interface Window {
     setEnabled(enabled: boolean): void
     setMode(mode: import('./line').LineMode): void
     setHandle(handle: import('./line').HandlePosition | null): void
+    setHideDelay(ms: number): void
+    setDebugHud(on: boolean): void
+    seedExtensions(builtins: import('@/widget/runtime').WidgetExtension[]): void
+    saveExtension(ext: Omit<import('@/widget/runtime').WidgetExtension, 'id'> & { id?: string }): string
+    removeExtension(id: string): void
+    hangWidget(ext: string): void
+    addTodo(text: string): void
     setDisplay(displayId: number | null): void
-    setClock(clock: boolean): void
     setMaxItems(maxItems: number): void
     addImageData(dataUrl: string): void
     addNote(text: string): void
@@ -57,9 +65,15 @@ interface Window {
     remove(id: string): void
     move(id: string, x: number): void
     addClip(x: number): void
-    fillClip(clipId: string, source: 'files' | 'paste' | 'capture'): void
+    fillClip(clipId: string, source: 'files' | 'paste' | 'capture' | `widget:${string}`): void
     drop(files: FileList, x: number, clipId?: string): void
-    watchCursor(listener: (point: { x: number; y: number }) => void): () => void
+    addTodo(text: string, clipId?: string): void
+    /** 让悬浮层获得键盘焦点（在夹子上直接打字时） */
+    focus(): void
+    listFolder(dir: string, limit: number): { total: number; entries: import('./line').FolderEntry[]; error?: string }
+    saveWidgetData(id: string, data: Record<string, unknown>): void
+    notify(text: string): void
+    watchCursor(listener: (point: { x: number; y: number }) => number | void): () => void
     copyImage(filePath: string): boolean
     copyText(text: string): boolean
     copyFile(filePath: string): boolean
@@ -67,6 +81,5 @@ interface Window {
     openExternal(url: string): Promise<void>
     startDrag(filePath: string): void
     isDarkColors(): boolean
-    isDev(): boolean
   }
 }

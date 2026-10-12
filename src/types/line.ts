@@ -1,3 +1,5 @@
+import type { WidgetExtension } from '@/widget/runtime'
+
 interface ItemBase {
   id: string
   createdAt: number
@@ -18,19 +20,33 @@ export interface NoteItem extends ItemBase {
   text: string
 }
 
-/** 用户的文件：只记路径，移除时不动原文件 */
+/** 用户的文件或文件夹（文件夹挂成可展开的衣架）：只记路径，移除时不动原文件 */
 export interface FileItem extends ItemBase {
   type: 'file'
   path: string
   name: string
+  isDirectory?: boolean
   icon: string
   /** 图片文件直接显示缩略图 */
   src: string | null
 }
 
-export interface ClockItem extends ItemBase {
-  type: 'clock'
+/** 挂件扩展的一个实例 */
+export interface WidgetItem extends ItemBase {
+  type: 'widget'
+  /** 扩展 id */
+  ext: string
+  /** 挂件 api.storage 的数据 */
+  data?: Record<string, unknown>
 }
+
+/** 快速便签：一条小待办，点完成就掉下去销毁 */
+export interface TodoItem extends ItemBase {
+  type: 'todo'
+  text: string
+}
+
+export const TODO_MAX = 30
 
 /** 点绳子加的空夹子，等着挂东西 */
 export interface ClipItem extends ItemBase {
@@ -39,7 +55,7 @@ export interface ClipItem extends ItemBase {
 
 export type ContentItem = ImageItem | NoteItem | FileItem
 
-export type LineItem = ContentItem | ClockItem | ClipItem
+export type LineItem = ContentItem | WidgetItem | TodoItem | ClipItem
 
 export const isContent = (it: LineItem): it is ContentItem =>
   it.type === 'image' || it.type === 'note' || it.type === 'file'
@@ -60,8 +76,14 @@ export interface LineState {
   handle: HandlePosition | null
   /** 当前屏幕是刘海屏 */
   notch: boolean
-  clock: boolean
+  /** 自动隐藏的收起延迟（ms） */
+  hideDelay: number
+  /** 内置扩展是否已写入数据库 */
+  seeded: boolean
+  /** 诊断面板开关（只在开发模式下生效） */
+  debugHud: boolean
   items: LineItem[]
+  extensions: WidgetExtension[]
 }
 
 export interface DisplayInfo {
@@ -87,4 +109,17 @@ export interface OverlayPayload {
   topInset: number
   notch: boolean
   handle: HandlePosition
+  hideDelay: number
+  extensions: WidgetExtension[]
+  /** 开发模式下显示诊断面板 */
+  debug: boolean
+}
+
+/** 文件夹衣架展开后的一项 */
+export interface FolderEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+  icon: string
+  src: string | null
 }

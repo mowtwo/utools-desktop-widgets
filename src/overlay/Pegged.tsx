@@ -1,48 +1,34 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Camera, Check, ClipboardPaste, FolderOpen, Plus, Trash2, X } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { Check, Puzzle, X } from 'lucide-react'
 import type { LineItem } from '@/types/line'
+import type { WidgetExtension } from '@/widget/runtime'
+import { WidgetFrame, type WidgetHost } from '@/widget/WidgetFrame'
 import { cn } from '@/lib/utils'
+import { EmptyClip } from './EmptyClip'
+import { FolderHanger } from './FolderHanger'
 import { CARD_WIDTH, PHOTO_MAX_HEIGHT } from './layout'
 import { Clothespin } from './Rope'
+import { glass } from './styles'
+import { TodoCard } from './TodoCard'
 
 const URL_RE = /^https?:\/\/\S+$/i
 const INNER = CARD_WIDTH - 14
 
-const glass = 'border border-white/50 bg-background/85 text-foreground dark:border-white/15'
-
 interface Props {
   item: LineItem
+  /** 挂件实例对应的扩展；扩展被删了就是 undefined */
+  extension?: WidgetExtension
+  extensions: WidgetExtension[]
+  /** 主题变化时变化，通知挂件沙箱 */
+  themeKey: unknown
   /** 把根元素交给物理循环，由它每帧写 translate / rotate */
   bind(id: string, el: HTMLDivElement | null): void
   /** 按住夹子：开始沿绳子拖动；没拖动就松开算点击 */
   onPinDown(e: ReactPointerEvent, id: string, onClick: () => void): void
   /** 碰一下，让它晃 */
   kick(id: string, amount: number): void
-  /** 开始把文件拖到别的应用：拖拽结束前不能收起绳子、不能切回点击穿透 */
+  /** 开始把文件拖到别的应用：拖拽结束前由外层按光标位置决定是否点击穿透 */
   onDragOut(): void
-}
-
-function useNow() {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-  return now
-}
-
-function ClockFace() {
-  const now = useNow()
-  return (
-    <div className="flex flex-col items-center px-2 py-3" style={{ width: INNER }}>
-      <div className="font-mono text-3xl font-semibold tabular-nums tracking-tight">
-        {now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
-      </div>
-      <div className="mt-1 text-xs text-muted-foreground">
-        {now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })}
-      </div>
-    </div>
-  )
 }
 
 function Photo({ src }: { src: string }) {
@@ -56,10 +42,9 @@ function Photo({ src }: { src: string }) {
   )
 }
 
-function Content({ item }: { item: Exclude<LineItem, { type: 'clip' }> }) {
+/** 图片、便签、文件：一张卡片里显示的内容 */
+function CardContent({ item }: { item: Extract<LineItem, { type: 'image' | 'note' | 'file' }> }) {
   switch (item.type) {
-    case 'clock':
-      return <ClockFace />
     case 'image':
       return <Photo src={item.src} />
     case 'file':
@@ -105,60 +90,50 @@ function open(item: LineItem) {
   else if (item.type === 'note' && URL_RE.test(item.text)) void o.openExternal(item.text)
 }
 
-/** 空夹子：点一下选要挂什么，也可以直接把文件拖到它上面 */
-function EmptyClip({ id, menuOpen, setMenuOpen }: { id: string; menuOpen: boolean; setMenuOpen(open: boolean): void }) {
-  const o = window.overlay!
-  const pick = (source: 'files' | 'paste' | 'capture') => {
-    setMenuOpen(false)
-    o.fillClip(id, source)
+/** 挂件扩展的一个实例：在沙箱里跑，api 的请求在这里转给悬浮层 preload */
+function WidgetCard({ id, extension, data, themeKey }: { id: string; extension?: WidgetExtension; data?: Record<string, unknown>; themeKey: unknown }) {
+  const [error, setError] = useState<string | null>(null)
+  const host = useMemo<WidgetHost>(() => {
+    const o = window.overlay!
+    return {
+      copy: (text) => o.copyText(text),
+      open: (url) => void o.openExternal(url),
+      notify: (text) => o.notify(text),
+      saveData: (d) => o.saveWidgetData(id, d),
+      onError: (message, line) => setError(line ? `第 ${line} 行：${message}` : message),
+    }
+  }, [id])
+
+  if (!extension) {
+    return (
+      <div className={cn('flex flex-col items-center gap-1 rounded-[16px] px-3 py-3 text-xs text-muted-foreground', glass)}>
+        <Puzzle className="size-4" />
+        扩展已被删除
+      </div>
+    )
   }
-  const actions = [
-    { icon: <FolderOpen />, label: '选文件', run: () => pick('files') },
-    { icon: <ClipboardPaste />, label: '粘贴', run: () => pick('paste') },
-    { icon: <Camera />, label: '截图', run: () => pick('capture') },
-    { icon: <Trash2 />, label: '取下夹子', run: () => o.remove(id) },
-  ]
   return (
-    <div className="relative -mt-1 flex flex-col items-center" data-clip={id}>
-      <button
-        data-hit
-        title="往夹子上挂东西"
-        onClick={() => setMenuOpen(!menuOpen)}
-        className={cn(
-          'flex size-7 items-center justify-center rounded-full border border-dashed border-foreground/30',
-          'bg-background/70 text-muted-foreground shadow-sm transition hover:scale-110 hover:text-foreground',
-        )}
-      >
-        <Plus className="size-3.5" />
-      </button>
-      {menuOpen && (
+    <div data-hit className={cn('relative rounded-[16px] p-1 shadow-[0_5px_10px_rgba(0,0,0,0.18)]', glass)}>
+      <WidgetFrame ext={extension} data={data} host={host} themeKey={themeKey} />
+      {error && (
         <div
-          data-hit
-          className={cn('mt-1.5 flex flex-col rounded-xl p-1 shadow-lg animate-in fade-in zoom-in-95', glass)}
-        >
-          {actions.map((a) => (
-            <button
-              key={a.label}
-              onClick={a.run}
-              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs whitespace-nowrap hover:bg-muted [&_svg]:size-3.5"
-            >
-              {a.icon}
-              {a.label}
-            </button>
-          ))}
-        </div>
+          title={error}
+          className="absolute right-1.5 bottom-1.5 size-2 rounded-full bg-destructive shadow"
+          aria-label="挂件脚本出错"
+        />
       )}
     </div>
   )
 }
 
 /** 夹在绳子上的一件东西：拖夹子换位置；单击复制，双击打开，拖卡片发到别的应用 */
-export function Pegged({ item, bind, onPinDown, kick, onDragOut }: Props) {
+export function Pegged({ item, extension, extensions, themeKey, bind, onPinDown, kick, onDragOut }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const draggable = item.type === 'image' || item.type === 'file'
+  const isFolder = item.type === 'file' && !!item.isDirectory
+  const draggable = (item.type === 'image' || item.type === 'file') && !isFolder
 
   useLayoutEffect(() => {
     bind(item.id, rootRef.current)
@@ -176,7 +151,7 @@ export function Pegged({ item, bind, onPinDown, kick, onDragOut }: Props) {
     return () => clearTimeout(timer)
   }, [copied])
 
-  // 点空夹子菜单以外的地方就收起菜单
+  // 点菜单 / 展开的衣架以外的地方就收起来
   useEffect(() => {
     if (!menuOpen) return
     const close = (e: PointerEvent) => {
@@ -185,6 +160,20 @@ export function Pegged({ item, bind, onPinDown, kick, onDragOut }: Props) {
     document.addEventListener('pointerdown', close)
     return () => document.removeEventListener('pointerdown', close)
   }, [menuOpen])
+
+  /** 待办完成：晃一下，从夹子上掉下去，再真正取下 */
+  const fallAndRemove = () => {
+    kick(item.id, 4)
+    bodyRef.current?.animate(
+      [
+        { translate: '0 0', rotate: '0deg', opacity: 1 },
+        { translate: '0 260px', rotate: '18deg', opacity: 0 },
+      ],
+      { duration: 620, easing: 'cubic-bezier(.55,0,.85,.4)', fill: 'forwards' },
+    )
+    // 不等动画的 finish 事件：页面被判定为不可见时动画不推进，finish 永远不会来
+    setTimeout(() => window.overlay?.remove(item.id), 650)
+  }
 
   return (
     <div
@@ -206,39 +195,47 @@ export function Pegged({ item, bind, onPinDown, kick, onDragOut }: Props) {
       </div>
       <div ref={bodyRef}>
         {item.type === 'clip' ? (
-          <EmptyClip id={item.id} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
+          <EmptyClip id={item.id} menuOpen={menuOpen} setMenuOpen={setMenuOpen} extensions={extensions} />
         ) : (
           <div className="group relative -mt-3.5 flex justify-center">
-            <div
-              data-hit
-              draggable={draggable}
-              onDragStart={(e) => {
-                // 必须取消网页自己的 HTML5 拖拽：否则拖出去的是一个没有文件数据的元素，
-                // 微信 / QQ 会把它当成空文件。取消后只保留 startDrag 发起的系统文件拖拽
-                e.preventDefault()
-                if (!draggable) return
-                onDragOut()
-                window.overlay?.startDrag(item.path)
-              }}
-              onClick={() => {
-                if (copy(item)) setCopied(true)
-                kick(item.id, 2.5)
-              }}
-              onDoubleClick={() => open(item)}
-              className={cn(
-                'origin-top rounded-[16px] p-1 shadow-[0_5px_10px_rgba(0,0,0,0.18)] transition-[scale,box-shadow] duration-200',
-                'group-hover:scale-[1.035] group-hover:shadow-[0_8px_14px_rgba(0,0,0,0.26)] active:scale-95',
-                glass,
-              )}
-            >
-              <Content item={item} />
-            </div>
+            {item.type === 'widget' ? (
+              <WidgetCard id={item.id} extension={extension} data={item.data} themeKey={themeKey} />
+            ) : item.type === 'todo' ? (
+              <TodoCard item={item} onDone={fallAndRemove} />
+            ) : isFolder ? (
+              <FolderHanger item={item as Extract<LineItem, { type: 'file' }>} open={menuOpen} setOpen={setMenuOpen} onDragOut={onDragOut} />
+            ) : (
+              <div
+                data-hit
+                draggable={draggable}
+                onDragStart={(e) => {
+                  // 必须取消网页自己的 HTML5 拖拽：否则拖出去的是一个没有文件数据的元素，
+                  // 微信 / QQ 会把它当成空文件。取消后只保留 startDrag 发起的系统文件拖拽
+                  e.preventDefault()
+                  if (!draggable) return
+                  onDragOut()
+                  window.overlay?.startDrag((item as Extract<LineItem, { type: 'image' | 'file' }>).path)
+                }}
+                onClick={() => {
+                  if (copy(item)) setCopied(true)
+                  kick(item.id, 2.5)
+                }}
+                onDoubleClick={() => open(item)}
+                className={cn(
+                  'origin-top rounded-[16px] p-1 shadow-[0_5px_10px_rgba(0,0,0,0.18)] transition-[scale,box-shadow] duration-200',
+                  'group-hover:scale-[1.035] group-hover:shadow-[0_8px_14px_rgba(0,0,0,0.26)] active:scale-95',
+                  glass,
+                )}
+              >
+                <CardContent item={item} />
+              </div>
+            )}
             <button
               data-hit
               title="取下"
               onClick={() => window.overlay?.remove(item.id)}
               className={cn(
-                'absolute top-1 left-1 flex size-5 scale-60 items-center justify-center rounded-full opacity-0 shadow',
+                'absolute top-1 left-1 z-10 flex size-5 scale-60 items-center justify-center rounded-full opacity-0 shadow',
                 'transition duration-150 group-hover:scale-100 group-hover:opacity-100',
                 glass,
               )}

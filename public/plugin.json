@@ -53,6 +53,19 @@
           "maxLength": 20
         }
       ]
+    },
+    {
+      "code": "todo",
+      "description": "挂一条快速待办，点完成就自动销毁",
+      "cmds": [
+        "快速便签",
+        {
+          "type": "over",
+          "label": "挂个待办",
+          "minLength": 1,
+          "maxLength": 30
+        }
+      ]
     }
   ]
 }

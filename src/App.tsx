@@ -1,17 +1,38 @@
-import { useState } from 'react'
-import { Bug, Camera, Clock, FolderOpen, GripHorizontal, Layers, Monitor, PanelTopOpen, Shirt, StickyNote, Trash2, X } from 'lucide-react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { Activity, Bug, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { FOCUS_TODO_EVENT } from '@/lib/enter'
 import { useLine } from '@/lib/use-line'
 import { cn } from '@/lib/utils'
-import { isContent, type ContentItem, type DisplayInfo, type HandlePosition, type LineMode } from '@/types/line'
+import {
+  isContent,
+  TODO_MAX,
+  type ContentItem,
+  type DisplayInfo,
+  type HandlePosition,
+  type LineMode,
+  type LineState,
+  type TodoItem,
+} from '@/types/line'
+
+// 代码编辑器（CodeMirror）比较大，打开「挂件扩展」时才加载
+const ExtensionsPage = lazy(() => import('@/extensions-page').then((m) => ({ default: m.ExtensionsPage })))
 
 const PRIMARY = 'primary'
 const MAX_CHOICES = [6, 8, 12, 20]
+const HIDE_DELAYS = [
+  { ms: 300, label: '0.3 秒' },
+  { ms: 800, label: '0.8 秒' },
+  { ms: 1500, label: '1.5 秒' },
+  { ms: 3000, label: '3 秒' },
+  { ms: 5000, label: '5 秒' },
+]
 
 function displayName(d: DisplayInfo, index: number) {
   const name = d.label || `屏幕 ${index + 1}`
@@ -33,9 +54,9 @@ function Row({ icon, title, hint, children }: { icon: React.ReactNode; title: st
   )
 }
 
-function ItemRow({ item }: { item: ContentItem }) {
+function ItemRow({ item }: { item: ContentItem | TodoItem }) {
   const services = window.services!
-  const path = item.type === 'note' ? null : item.path
+  const path = item.type === 'note' || item.type === 'todo' ? null : item.path
   return (
     <div
       className={cn('flex items-center gap-3 px-4 py-2', path && 'cursor-grab')}
@@ -54,13 +75,17 @@ function ItemRow({ item }: { item: ContentItem }) {
         ) : (
           <img src={item.icon} className="size-9 object-contain" />
         ))}
-      {item.type === 'note' && (
+      {(item.type === 'note' || item.type === 'todo') && (
         <span className="flex size-9 items-center justify-center rounded-md border bg-muted">
-          <StickyNote className="size-4 text-muted-foreground" />
+          {item.type === 'todo' ? (
+            <ListTodo className="size-4 text-muted-foreground" />
+          ) : (
+            <StickyNote className="size-4 text-muted-foreground" />
+          )}
         </span>
       )}
       <span className="min-w-0 flex-1 truncate text-sm">
-        {item.type === 'image' ? '截图' : item.type === 'note' ? item.text : item.name}
+        {item.type === 'image' ? '截图' : item.type === 'file' ? item.name : item.text}
       </span>
       <Button variant="ghost" size="icon-sm" title="取下" onClick={() => services.removeItem(item.id)}>
         <X />
@@ -71,15 +96,68 @@ function ItemRow({ item }: { item: ContentItem }) {
 
 export default function App() {
   const line = useLine()
-  const services = window.services
-  const [displays, setDisplays] = useState<DisplayInfo[]>(() => services?.listDisplays() ?? [])
-  const [note, setNote] = useState('')
+  const [tab, setTab] = useState('line')
+  const dark = useDark()
 
-  if (!services) {
+  // 「快速便签」指令进来：切到晾衣绳页，聚焦待办输入框（由 LinePage 处理）
+  useEffect(() => {
+    const onFocusTodo = () => setTab('line')
+    window.addEventListener(FOCUS_TODO_EVENT, onFocusTodo)
+    return () => window.removeEventListener(FOCUS_TODO_EVENT, onFocusTodo)
+  }, [])
+
+  if (!window.services) {
     return <div className="p-6 text-sm text-muted-foreground">请在 uTools 中打开</div>
   }
 
-  const content = line.items.filter(isContent)
+  return (
+    <Tabs value={tab} onValueChange={setTab} className="flex h-screen flex-col gap-0">
+      <div className="flex justify-center border-b px-5 py-2">
+        <TabsList>
+          <TabsTrigger value="line">晾衣绳</TabsTrigger>
+          <TabsTrigger value="extensions">挂件扩展</TabsTrigger>
+        </TabsList>
+      </div>
+      <TabsContent value="line" className="min-h-0 flex-1 overflow-auto">
+        <LinePage line={line} />
+      </TabsContent>
+      <TabsContent value="extensions" className="min-h-0 flex-1 p-4">
+        <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">加载编辑器…</div>}>
+          <ExtensionsPage key={line.extensions.length ? 'ready' : 'empty'} extensions={line.extensions} dark={dark} />
+        </Suspense>
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+/** 跟随 html 上的 dark class（由 applyTheme 设置） */
+function useDark() {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
+  useEffect(() => {
+    const observer = new MutationObserver(() => setDark(document.documentElement.classList.contains('dark')))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
+  return dark
+}
+
+function LinePage({ line }: { line: LineState }) {
+  const services = window.services!
+  const [displays, setDisplays] = useState<DisplayInfo[]>(() => services.listDisplays())
+  const [note, setNote] = useState('')
+  const [kind, setKind] = useState<'note' | 'todo'>('note')
+  const noteInput = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const onFocusTodo = () => {
+      setKind('todo')
+      setTimeout(() => noteInput.current?.focus(), 50)
+    }
+    window.addEventListener(FOCUS_TODO_EVENT, onFocusTodo)
+    return () => window.removeEventListener(FOCUS_TODO_EVENT, onFocusTodo)
+  }, [])
+
+  const content = line.items.filter((it): it is ContentItem | TodoItem => isContent(it) || it.type === 'todo')
   const missing = line.displayId != null && !displays.some((d) => d.id === line.displayId)
 
   const capture = async () => {
@@ -97,7 +175,8 @@ export default function App() {
   }
 
   const submitNote = () => {
-    services.addNote(note)
+    if (kind === 'todo') services.addTodo(note)
+    else services.addNote(note)
     setNote('')
   }
 
@@ -171,9 +250,22 @@ export default function App() {
             </ToggleGroup>
           </Row>
         )}
-        <Row icon={<Clock />} title="时钟" hint="也是一件挂在绳上的东西，可以拖动">
-          <Switch checked={line.clock} onCheckedChange={services.setClock} />
-        </Row>
+        {line.mode === 'auto' && (
+          <Row icon={<Timer />} title="收起延迟" hint="鼠标离开晾衣绳多久后收起">
+            <Select value={String(line.hideDelay)} onValueChange={(v) => services.setHideDelay(Number(v))}>
+              <SelectTrigger className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {HIDE_DELAYS.map((d) => (
+                  <SelectItem key={d.ms} value={String(d.ms)}>
+                    {d.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Row>
+        )}
         <Row icon={<Layers />} title="最多挂几件" hint="超出后最旧的会掉下去">
           <Select value={String(line.maxItems)} onValueChange={(v) => services.setMaxItems(Number(v))}>
             <SelectTrigger className="w-20">
@@ -188,6 +280,11 @@ export default function App() {
             </SelectContent>
           </Select>
         </Row>
+        {window.utools?.isDev() && (
+          <Row icon={<Activity />} title="诊断面板" hint="仅开发模式：悬浮层右下角显示可见性和动画帧数">
+            <Switch checked={line.debugHud} onCheckedChange={services.setDebugHud} />
+          </Row>
+        )}
       </section>
 
       <section className="flex flex-col gap-3 rounded-xl border bg-card p-4">
@@ -206,13 +303,32 @@ export default function App() {
             submitNote()
           }}
         >
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="写张便签挂上去" />
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            value={kind}
+            onValueChange={(v) => v && setKind(v as 'note' | 'todo')}
+          >
+            <ToggleGroupItem value="note" title="便签：单击复制">
+              <StickyNote />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="todo" title="待办：点完成就自动销毁">
+              <ListTodo />
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Input
+            ref={noteInput}
+            value={note}
+            maxLength={kind === 'todo' ? TODO_MAX : undefined}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={kind === 'todo' ? `写条待办（最多 ${TODO_MAX} 字），完成后自动销毁` : '写张便签挂上去'}
+          />
           <Button type="submit" disabled={!note.trim()}>
             挂上去
           </Button>
         </form>
         <p className="text-xs text-muted-foreground">
-          也可以在 uTools 里粘贴图片、选中文字或文件后选「挂到晾衣绳」；或者点绳子空白处加个夹子，再往夹子上挂东西
+          也可以在 uTools 里粘贴图片、选中文字或文件后选「挂到晾衣绳」（文件夹会挂成可展开的衣架）；或者点绳子空白处加个夹子，再往夹子上挂东西
         </p>
       </section>
 
@@ -231,7 +347,7 @@ export default function App() {
               variant="ghost"
               size="icon-sm"
               title="全部取下"
-              disabled={!line.items.some((it) => it.type !== 'clock')}
+              disabled={!line.items.some((it) => it.type !== 'widget')}
               onClick={services.clearItems}
             >
               <Trash2 />
