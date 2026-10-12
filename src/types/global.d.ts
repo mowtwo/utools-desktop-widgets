@@ -42,16 +42,20 @@ interface Window {
     addFiles(paths: string[]): void
     removeItem(id: string): void
     clearItems(): void
+    peek(): void
     openOverlayDevTools(): void
   }
   /** 悬浮层窗口 preload（public/overlay_preload.js） */
   overlay?: {
     onState(listener: (payload: import('./line').OverlayPayload) => void): void
-    onPeek(listener: () => void): void
+    onPeek(listener: (duration?: number) => void): void
     ready(): void
     setInteractive(interactive: boolean): void
     remove(id: string): void
-    hideClock(): void
+    move(id: string, x: number): void
+    addClip(x: number): void
+    fillClip(clipId: string, source: 'files' | 'paste' | 'capture'): void
+    drop(files: FileList, x: number, clipId?: string): void
     watchCursor(listener: (point: { x: number; y: number }) => void): () => void
     copyImage(filePath: string): boolean
     copyText(text: string): boolean

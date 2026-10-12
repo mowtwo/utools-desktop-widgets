@@ -6,25 +6,52 @@
     {
       "code": "settings",
       "description": "晾衣绳设置：显示屏幕、显示方式、挂着的东西",
-      "cmds": ["晾衣绳", "桌面挂件"]
+      "cmds": [
+        "晾衣绳",
+        "桌面挂件"
+      ]
+    },
+    {
+      "code": "peek",
+      "description": "把晾衣绳拉下来看一眼（可绑定全局快捷键）",
+      "cmds": [
+        "拉下晾衣绳"
+      ]
     },
     {
       "code": "toggle",
       "description": "显示或隐藏晾衣绳",
-      "cmds": ["显示/隐藏晾衣绳"]
+      "cmds": [
+        "显示/隐藏晾衣绳"
+      ]
     },
     {
       "code": "capture",
       "description": "截图并挂到晾衣绳上",
-      "cmds": ["截图挂到晾衣绳"]
+      "cmds": [
+        "截图挂到晾衣绳"
+      ]
     },
     {
       "code": "hang",
       "description": "把图片、文字或文件挂到晾衣绳上",
       "cmds": [
-        { "type": "img", "label": "挂到晾衣绳" },
-        { "type": "over", "label": "挂到晾衣绳", "minLength": 1, "maxLength": 2000 },
-        { "type": "files", "label": "挂到晾衣绳", "minLength": 1, "maxLength": 20 }
+        {
+          "type": "img",
+          "label": "挂到晾衣绳"
+        },
+        {
+          "type": "over",
+          "label": "挂到晾衣绳",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        {
+          "type": "files",
+          "label": "挂到晾衣绳",
+          "minLength": 1,
+          "maxLength": 20
+        }
       ]
     }
   ]

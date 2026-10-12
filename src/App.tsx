@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useLine } from '@/lib/use-line'
-import type { DisplayInfo, LineItem, LineMode } from '@/types/line'
+import { isContent, type ContentItem, type DisplayInfo, type LineMode } from '@/types/line'
 
 const PRIMARY = 'primary'
 const MAX_CHOICES = [6, 8, 12, 20]
@@ -32,7 +32,7 @@ function Row({ icon, title, hint, children }: { icon: React.ReactNode; title: st
   )
 }
 
-function ItemRow({ item }: { item: LineItem }) {
+function ItemRow({ item }: { item: ContentItem }) {
   const services = window.services!
   return (
     <div className="flex items-center gap-3 px-4 py-2">
@@ -68,6 +68,7 @@ export default function App() {
     return <div className="p-6 text-sm text-muted-foreground">请在 uTools 中打开</div>
   }
 
+  const content = line.items.filter(isContent)
   const missing = line.displayId != null && !displays.some((d) => d.id === line.displayId)
 
   const capture = async () => {
@@ -135,7 +136,7 @@ export default function App() {
             <ToggleGroupItem value="pinned">常驻</ToggleGroupItem>
           </ToggleGroup>
         </Row>
-        <Row icon={<Clock />} title="时钟" hint="挂在绳子最左边">
+        <Row icon={<Clock />} title="时钟" hint="也是一件挂在绳上的东西，可以拖动">
           <Switch checked={line.clock} onCheckedChange={services.setClock} />
         </Row>
         <Row icon={<Layers />} title="最多挂几件" hint="超出后最旧的会掉下去">
@@ -176,14 +177,14 @@ export default function App() {
           </Button>
         </form>
         <p className="text-xs text-muted-foreground">
-          也可以在 uTools 里粘贴图片、选中文字或文件，然后选「挂到晾衣绳」
+          也可以在 uTools 里粘贴图片、选中文字或文件后选「挂到晾衣绳」；或者点绳子空白处加个夹子，再往夹子上挂东西
         </p>
       </section>
 
       <section className="rounded-xl border bg-card">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-medium">
-            挂着的 <Badge variant="secondary">{line.items.length}</Badge>
+            挂着的 <Badge variant="secondary">{content.length}</Badge>
           </div>
           <div className="flex items-center gap-1">
             {window.utools?.isDev() && (
@@ -195,16 +196,16 @@ export default function App() {
               variant="ghost"
               size="icon-sm"
               title="全部取下"
-              disabled={!line.items.length}
+              disabled={!line.items.some((it) => it.type !== 'clock')}
               onClick={services.clearItems}
             >
               <Trash2 />
             </Button>
           </div>
         </div>
-        {line.items.length > 0 && (
+        {content.length > 0 && (
           <div className="divide-y border-t">
-            {line.items.map((item) => (
+            {content.map((item) => (
               <ItemRow key={item.id} item={item} />
             ))}
           </div>

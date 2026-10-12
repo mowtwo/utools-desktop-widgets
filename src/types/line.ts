@@ -1,6 +1,8 @@
 interface ItemBase {
   id: string
   createdAt: number
+  /** 在绳子上的位置，占绳长的比例 */
+  x: number
 }
 
 /** 截图、粘贴的图片：保存在插件本地数据目录，移除时一起删除 */
@@ -26,7 +28,21 @@ export interface FileItem extends ItemBase {
   src: string | null
 }
 
-export type LineItem = ImageItem | NoteItem | FileItem
+export interface ClockItem extends ItemBase {
+  type: 'clock'
+}
+
+/** 点绳子加的空夹子，等着挂东西 */
+export interface ClipItem extends ItemBase {
+  type: 'clip'
+}
+
+export type ContentItem = ImageItem | NoteItem | FileItem
+
+export type LineItem = ContentItem | ClockItem | ClipItem
+
+export const isContent = (it: LineItem): it is ContentItem =>
+  it.type === 'image' || it.type === 'note' || it.type === 'file'
 
 export type LineMode = 'auto' | 'pinned'
 
@@ -60,7 +76,6 @@ export interface Rect {
 
 export interface OverlayPayload {
   mode: LineMode
-  clock: boolean
   items: LineItem[]
   bounds: Rect
   topInset: number

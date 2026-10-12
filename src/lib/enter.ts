@@ -12,6 +12,11 @@ export async function handlePluginEnter(action: UToolsPluginEnterAction) {
       window.utools?.hideMainWindow()
       return
     }
+    case 'peek': {
+      services.peek()
+      window.utools?.hideMainWindow()
+      return
+    }
     case 'capture': {
       window.utools?.hideMainWindow()
       try {

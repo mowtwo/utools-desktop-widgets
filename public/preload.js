@@ -5,10 +5,16 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { randomUUID } = require('node:crypto')
-const { ipcRenderer } = require('electron')
+const { ipcRenderer, clipboard } = require('electron')
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'svg']
+const CONTENT_TYPES = ['image', 'note', 'file']
 const DISPLAY_POLL_MS = 2000
+/** 两件东西之间的默认间距（px），与悬浮层 layout.ts 的 SPACING 一致 */
+const SPACING = 174
+/** 夹子能放的范围（占绳长的比例），两端留出淡出区 */
+const X_MIN = 0.04
+const X_MAX = 0.96
 
 const dataDir = utools.getPluginLocalDataPath()
 const imageDir = path.join(dataDir, 'images')
@@ -20,11 +26,13 @@ const defaultState = {
   mode: 'auto',
   /** 用户选择的屏幕；null 表示主屏 */
   displayId: null,
+  /** 最多挂几件（只算图片、便签、文件，不算时钟和空夹子） */
   maxItems: 12,
-  clock: true,
-  /** 新的在前 */
-  items: [],
+  /** 每件都有 x：在绳子上的位置，占绳长的比例 */
+  items: [{ id: 'clock', type: 'clock', x: 0.12, createdAt: 0 }],
 }
+
+const clampX = (x) => Math.min(X_MAX, Math.max(X_MIN, x))
 
 function loadState() {
   try {
@@ -32,9 +40,17 @@ function loadState() {
     const state = { ...defaultState, ...saved }
     // 清掉文件已经不存在的图片
     state.items = state.items.filter((it) => it.type !== 'image' || fs.existsSync(it.path))
+    // 旧版本没有位置：按顺序均匀排开
+    state.items.forEach((it, i) => {
+      if (typeof it.x !== 'number') it.x = clampX(0.2 + (0.6 * i) / Math.max(1, state.items.length - 1))
+    })
+    if (typeof saved.clock === 'boolean') {
+      if (saved.clock && !state.items.some((it) => it.type === 'clock')) state.items.push({ ...defaultState.items[0] })
+      delete state.clock
+    }
     return state
   } catch {
-    return { ...defaultState }
+    return { ...defaultState, items: [...defaultState.items] }
   }
 }
 
@@ -77,17 +93,19 @@ function snapshot() {
     activeDisplayId: display.id,
     displayFallback: fallback,
     maxItems: state.maxItems,
-    clock: state.clock,
+    clock: state.items.some((it) => it.type === 'clock'),
     items: viewItems(),
   }
 }
 
+function ipcSend(channel, ...args) {
+  if (overlay && overlay.ready && !overlay.win.isDestroyed()) overlay.win.webContents.send(channel, ...args)
+}
+
 function pushToOverlay() {
-  if (!overlay || !overlay.ready || overlay.win.isDestroyed()) return
   const { display } = resolveDisplay()
-  overlay.win.webContents.send('overlay:state', {
+  ipcSend('overlay:state', {
     mode: state.mode,
-    clock: state.clock,
     items: viewItems(),
     bounds: display.bounds,
     // macOS 菜单栏、顶部任务栏占掉的高度，绳子挂在它下面
@@ -146,6 +164,10 @@ function openOverlay(display) {
       try {
         win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
       } catch {}
+      // 悬浮层不在前台、内容又几乎全透明，容易被节流，导致光标轮询和绳子动画停掉
+      try {
+        win.webContents.setBackgroundThrottling(false)
+      } catch {}
       // 不抢走用户当前窗口的焦点
       win.showInactive()
     },
@@ -192,14 +214,6 @@ function update(patch) {
   emit()
 }
 
-function addItems(newItems) {
-  const items = [...newItems, ...state.items]
-  // 超出上限：最旧的掉下去，我们自己保存的图片顺手删掉
-  for (const dropped of items.slice(state.maxItems)) removeOwnedFile(dropped)
-  update({ items: items.slice(0, state.maxItems) })
-  ipcSend('overlay:peek')
-}
-
 function removeOwnedFile(item) {
   if (item.type !== 'image') return
   try {
@@ -207,11 +221,50 @@ function removeOwnedFile(item) {
   } catch {}
 }
 
-function ipcSend(channel, ...args) {
-  if (overlay && overlay.ready && !overlay.win.isDestroyed()) overlay.win.webContents.send(channel, ...args)
+/** 绳上最大的空当的中点，新东西挂那里 */
+function freeX() {
+  const xs = state.items.map((it) => it.x).sort((a, b) => a - b)
+  const edges = [X_MIN, ...xs, X_MAX]
+  let best = 0.5
+  let widest = -1
+  for (let i = 0; i < edges.length - 1; i++) {
+    const gap = edges[i + 1] - edges[i]
+    if (gap > widest) {
+      widest = gap
+      best = (edges[i] + edges[i + 1]) / 2
+    }
+  }
+  return best
 }
 
-function addImageData(dataUrl) {
+/**
+ * 挂上新东西
+ * @param at.x 指定位置（占绳长的比例），不给就挂在最大空当
+ * @param at.clipId 挂到这个空夹子上，夹子被替换
+ */
+function hang(newItems, at = {}) {
+  if (!newItems.length) return
+  let items = state.items
+  let x = at.x
+  if (at.clipId) {
+    const clip = items.find((it) => it.id === at.clipId)
+    if (clip) x = clip.x
+    items = items.filter((it) => it.id !== at.clipId)
+  }
+  state = { ...state, items }
+  const step = SPACING / resolveDisplay().display.bounds.width
+  const start = x ?? freeX()
+  const placed = newItems.map((it, i) => ({ ...it, x: clampX(start + i * step) }))
+  items = [...placed, ...items]
+  // 超出上限：最旧的掉下去，我们自己保存的图片顺手删掉
+  const content = items.filter((it) => CONTENT_TYPES.includes(it.type)).sort((a, b) => b.createdAt - a.createdAt)
+  const dropped = new Set(content.slice(state.maxItems).map((it) => it.id))
+  for (const it of items) if (dropped.has(it.id)) removeOwnedFile(it)
+  update({ items: items.filter((it) => !dropped.has(it.id)) })
+  ipcSend('overlay:peek')
+}
+
+function imageItem(dataUrl) {
   const match = /^data:image\/(\w+);base64,(.+)$/.exec(dataUrl)
   if (!match) throw new Error('不支持的图片数据')
   const ext = match[1] === 'jpeg' ? 'jpg' : match[1]
@@ -219,7 +272,36 @@ function addImageData(dataUrl) {
   const id = randomUUID()
   const file = path.join(imageDir, `${id}.${ext}`)
   fs.writeFileSync(file, Buffer.from(match[2], 'base64'))
-  addItems([{ id, type: 'image', path: file, createdAt: Date.now() }])
+  return { id, type: 'image', path: file, createdAt: Date.now() }
+}
+
+function noteItem(text) {
+  const trimmed = text.trim()
+  return trimmed ? { id: randomUUID(), type: 'note', text: trimmed, createdAt: Date.now() } : null
+}
+
+/** 挂文件只记路径，不复制、不删除用户的文件 */
+function fileItems(paths) {
+  return paths
+    .filter((p) => fs.existsSync(p))
+    .map((p) => ({
+      id: randomUUID(),
+      type: 'file',
+      path: p,
+      name: path.basename(p),
+      icon: utools.getFileIcon(p),
+      createdAt: Date.now(),
+    }))
+}
+
+/** 剪贴板里的东西：文件 > 图片 > 文字 */
+function clipboardItems() {
+  const files = utools.getCopiedFiles()
+  if (files && files.length) return fileItems(files.map((f) => f.path))
+  const image = clipboard.readImage()
+  if (!image.isEmpty()) return [imageItem(image.toDataURL())]
+  const note = noteItem(clipboard.readText())
+  return note ? [note] : []
 }
 
 ipcRenderer.on('overlay:ready', () => {
@@ -239,8 +321,33 @@ ipcRenderer.on('overlay:remove', (_e, id) => {
   window.services.removeItem(id)
 })
 
-ipcRenderer.on('overlay:hide-clock', () => {
-  update({ clock: false })
+ipcRenderer.on('overlay:move', (_e, id, x) => {
+  update({ items: state.items.map((it) => (it.id === id ? { ...it, x: clampX(x) } : it)) })
+})
+
+ipcRenderer.on('overlay:add-clip', (_e, x) => {
+  update({ items: [...state.items, { id: randomUUID(), type: 'clip', x: clampX(x), createdAt: Date.now() }] })
+})
+
+ipcRenderer.on('overlay:fill-clip', async (_e, clipId, source) => {
+  try {
+    if (source === 'files') {
+      const paths = utools.showOpenDialog({ title: '挂到夹子上', properties: ['openFile', 'multiSelections'] })
+      if (paths && paths.length) hang(fileItems(paths), { clipId })
+    } else if (source === 'paste') {
+      const items = clipboardItems()
+      if (items.length) hang(items, { clipId })
+      else utools.showNotification('剪贴板里没有能挂的东西')
+    } else if (source === 'capture') {
+      hang([imageItem(await utools.screenCapture())], { clipId })
+    }
+  } catch {
+    // 用户取消截图或选择
+  }
+})
+
+ipcRenderer.on('overlay:drop', (_e, paths, x, clipId) => {
+  hang(fileItems(paths), clipId ? { clipId } : { x })
 })
 
 window.services = {
@@ -265,43 +372,41 @@ window.services = {
     syncOverlay()
     startDisplayWatch()
   },
+  /** 把晾衣绳拉下来一会儿 */
+  peek() {
+    if (!state.enabled) update({ enabled: true })
+    ipcSend('overlay:peek', 4000)
+  },
   setEnabled: (enabled) => update({ enabled }),
   setMode: (mode) => update({ mode }),
   setDisplay: (displayId) => update({ displayId }),
-  setClock: (clock) => update({ clock }),
+  setClock(on) {
+    const items = state.items.filter((it) => it.type !== 'clock')
+    if (on) items.push({ id: 'clock', type: 'clock', x: freeX(), createdAt: 0 })
+    update({ items })
+  },
   setMaxItems(maxItems) {
-    for (const dropped of state.items.slice(maxItems)) removeOwnedFile(dropped)
-    update({ maxItems, items: state.items.slice(0, maxItems) })
+    const content = state.items.filter((it) => CONTENT_TYPES.includes(it.type)).sort((a, b) => b.createdAt - a.createdAt)
+    const dropped = new Set(content.slice(maxItems).map((it) => it.id))
+    for (const it of state.items) if (dropped.has(it.id)) removeOwnedFile(it)
+    update({ maxItems, items: state.items.filter((it) => !dropped.has(it.id)) })
   },
-  addImageData,
+  addImageData: (dataUrl) => hang([imageItem(dataUrl)]),
   addNote(text) {
-    const trimmed = text.trim()
-    if (!trimmed) return
-    addItems([{ id: randomUUID(), type: 'note', text: trimmed, createdAt: Date.now() }])
+    const note = noteItem(text)
+    if (note) hang([note])
   },
-  /** 挂文件只记路径，不复制、不删除用户的文件 */
-  addFiles(paths) {
-    const items = paths
-      .filter((p) => fs.existsSync(p))
-      .map((p) => ({
-        id: randomUUID(),
-        type: 'file',
-        path: p,
-        name: path.basename(p),
-        icon: utools.getFileIcon(p),
-        createdAt: Date.now(),
-      }))
-    if (items.length) addItems(items)
-  },
+  addFiles: (paths) => hang(fileItems(paths)),
   removeItem(id) {
     const item = state.items.find((it) => it.id === id)
     if (!item) return
     removeOwnedFile(item)
     update({ items: state.items.filter((it) => it.id !== id) })
   },
+  /** 取下所有图片、便签、文件和空夹子，时钟留着 */
   clearItems() {
     for (const it of state.items) removeOwnedFile(it)
-    update({ items: [] })
+    update({ items: state.items.filter((it) => it.type === 'clock') })
   },
   /** 开发模式下打开悬浮层的开发者工具 */
   openOverlayDevTools() {

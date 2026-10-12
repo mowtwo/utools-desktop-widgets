@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
-import type { OverlayPayload } from '@/types/line'
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import type { LineItem, OverlayPayload } from '@/types/line'
 import { applyTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
-import { CARD_WIDTH, PANEL_HEIGHT, PIN_ABOVE, itemX, ropeY } from './layout'
-import { Pegged, type Hangable } from './Pegged'
-import { Rope } from './Rope'
+import { CARD_WIDTH, PANEL_HEIGHT, PIN_ABOVE, tiltOf } from './layout'
+import { Pegged } from './Pegged'
+import { Pendulum, Rope, type Load } from './physics'
+import { drawRope } from './Rope'
 
 /** 鼠标在屏幕最上边缘停留多久后滑出 */
 const REVEAL_DWELL_MS = 250
@@ -12,42 +13,157 @@ const REVEAL_DWELL_MS = 250
 const HIDE_DELAY_MS = 350
 /** 新挂上东西时自动滑出展示的时长 */
 const PEEK_MS = 2500
+/** 离绳子多近算点在绳子上（px） */
+const ROPE_HIT = 10
+/** 夹子手柄比夹子顶端多出的上边距 */
+const HANDLE_PAD = 2
+/** 夹子能放的范围（占绳长的比例） */
+const X_MIN = 0.04
+const X_MAX = 0.96
+
+/** 每种东西压在绳子上的分量（相对一个绳节） */
+const WEIGHT: Record<LineItem['type'], number> = { image: 10, file: 10, note: 7, clock: 8, clip: 2 }
 
 export default function Overlay() {
   const [payload, setPayload] = useState<OverlayPayload | null>(null)
   const [revealed, setRevealed] = useState(false)
-  const [gust, setGust] = useState(0)
   const interactive = useRef(false)
   const revealedRef = useRef(false)
   const peekUntil = useRef(0)
 
-  const setInteractive = (next: boolean) => {
+  // 物理循环用到的可变状态，不走 React 渲染
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const rope = useRef<Rope | null>(null)
+  const items = useRef<LineItem[]>([])
+  const elements = useRef(new Map<string, HTMLDivElement>())
+  const pendulums = useRef(new Map<string, Pendulum>())
+  /** 拖动中、或刚松手还没等到新状态时的位置（px） */
+  const overrides = useRef(new Map<string, number>())
+  const drag = useRef<{ id: string; offset: number; startX: number; moved: boolean } | null>(null)
+  const frame = useRef(0)
+  const lastTime = useRef(0)
+  /** 拖过的挂件叠到最上面 */
+  const topZ = useRef(1)
+
+  const setInteractive = useCallback((next: boolean) => {
     if (interactive.current === next) return
     interactive.current = next
     window.overlay?.setInteractive(next)
-  }
+  }, [])
 
-  const reveal = (next: boolean) => {
-    if (revealedRef.current === next) return
-    revealedRef.current = next
-    setRevealed(next)
-    // 滑下来时吹一阵风，让东西晃一晃；收起时恢复点击穿透
-    if (next) setGust((g) => g + 1)
-    else setInteractive(false)
-  }
+  const tick = useCallback((time: number) => {
+    const r = rope.current
+    if (!r) {
+      frame.current = 0
+      return
+    }
+    const dt = Math.min(1 / 30, (time - lastTime.current) / 1000 || 1 / 60)
+    lastTime.current = time
+    const xOf = (it: LineItem) => overrides.current.get(it.id) ?? it.x * r.width
+    const loads: Load[] = items.current.map((it) => ({ x: xOf(it), weight: WEIGHT[it.type] }))
+    r.step(dt, loads)
+
+    let resting = r.motion() < 0.5 && !drag.current
+    for (const it of items.current) {
+      const el = elements.current.get(it.id)
+      let p = pendulums.current.get(it.id)
+      if (!p) {
+        p = new Pendulum()
+        pendulums.current.set(it.id, p)
+      }
+      const x = xOf(it)
+      const y = r.yAt(x)
+      p.step(dt, x, y)
+      if (!p.isResting()) resting = false
+      if (el) {
+        el.style.translate = `${x - CARD_WIDTH / 2}px ${y - PIN_ABOVE - HANDLE_PAD}px`
+        el.style.rotate = `${tiltOf(it.id) + (p.angle * 180) / Math.PI}deg`
+        // 靠近屏幕边缘的淡出
+        el.style.opacity = String(Math.min(1, Math.max(0, Math.min(x, r.width - x) / 90)))
+      }
+    }
+    if (canvasRef.current) drawRope(canvasRef.current, r)
+    // 静止后停掉循环，有新动静时再唤醒
+    frame.current = resting ? 0 : requestAnimationFrame(tick)
+  }, [])
+
+  const wake = useCallback(() => {
+    if (frame.current) return
+    lastTime.current = performance.now()
+    frame.current = requestAnimationFrame(tick)
+  }, [tick])
+
+  const reveal = useCallback(
+    (next: boolean) => {
+      if (revealedRef.current === next) return
+      revealedRef.current = next
+      setRevealed(next)
+      if (next) {
+        // 滑下来时吹一阵风
+        for (const p of pendulums.current.values()) p.kick((Math.random() - 0.3) * 1.4)
+        wake()
+      } else {
+        setInteractive(false)
+      }
+    },
+    [setInteractive, wake],
+  )
+
+  const bind = useCallback(
+    (id: string, el: HTMLDivElement | null) => {
+      if (el) elements.current.set(id, el)
+      else elements.current.delete(id)
+      wake()
+    },
+    [wake],
+  )
+
+  const kick = useCallback(
+    (id: string, amount: number) => {
+      pendulums.current.get(id)?.kick(amount)
+      wake()
+    },
+    [wake],
+  )
 
   useEffect(() => {
     window.overlay?.onState((p) => {
       applyTheme(window.overlay?.isDarkColors())
       setPayload(p)
     })
-    window.overlay?.onPeek(() => {
-      peekUntil.current = Date.now() + PEEK_MS
+    window.overlay?.onPeek((duration) => {
+      peekUntil.current = Date.now() + (duration ?? PEEK_MS)
       reveal(true)
     })
     window.overlay?.ready()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [reveal])
+
+  // 新状态：同步绳子宽度、挂件和重量；新挂上的东西让绳子弹一下
+  useEffect(() => {
+    if (!payload) return
+    const width = payload.bounds.width
+    if (!rope.current || rope.current.width !== width) rope.current = new Rope(width)
+    const r = rope.current
+    const known = new Set(items.current.map((it) => it.id))
+    for (const it of payload.items) {
+      if (known.has(it.id)) continue
+      const p = new Pendulum()
+      p.angle = 0.28
+      pendulums.current.set(it.id, p)
+      r.pluck(it.x * width, 260)
+    }
+    const ids = new Set(payload.items.map((it) => it.id))
+    for (const id of pendulums.current.keys()) if (!ids.has(id)) pendulums.current.delete(id)
+    // 主界面确认了新位置，就不再需要本地覆盖
+    for (const it of payload.items) {
+      const o = overrides.current.get(it.id)
+      if (o !== undefined && drag.current?.id !== it.id && Math.abs(o - it.x * width) < 1) overrides.current.delete(it.id)
+    }
+    items.current = payload.items
+    wake()
+  }, [payload, wake])
+
+  useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
   const pinned = payload?.mode === 'pinned'
   const shown = pinned || revealed
@@ -73,80 +189,137 @@ export default function Overlay() {
       }
       edgeSince = 0
       const away = !inside || p.y > bounds.y + topInset + PANEL_HEIGHT + 30
-      if (away && now >= peekUntil.current) {
+      if (away && now >= peekUntil.current && !drag.current) {
         awaySince ||= now
         if (now - awaySince >= HIDE_DELAY_MS) reveal(false)
       } else {
         awaySince = 0
       }
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload, pinned])
+  }, [payload, pinned, reveal])
 
-  // 常驻模式切换进来时也吹一阵风
-  useEffect(() => {
-    if (pinned) setGust((g) => g + 1)
-  }, [pinned])
+  const nearRope = (clientX: number, clientY: number) => {
+    if (!rope.current || !payload) return false
+    return Math.abs(rope.current.yAt(clientX) - (clientY - payload.topInset)) < ROPE_HIT
+  }
 
-  // 整窗默认点击穿透，forward 模式下仍收到 mousemove：鼠标在挂件上就关闭穿透
+  // 整窗默认点击穿透，forward 模式下仍收到 mousemove：
+  // 鼠标在挂件、绳子上，或自动模式下在滑出的晾衣绳区域里，就关闭穿透
   useEffect(() => {
+    if (!payload) return
+    const stripBottom = payload.topInset + PANEL_HEIGHT
     const onMove = (e: MouseEvent) => {
+      if (drag.current) return
       const el = document.elementFromPoint(e.clientX, e.clientY)
-      setInteractive(shown && !!el?.closest('[data-hit]'))
+      const overItem = !!el?.closest('[data-hit]')
+      const onRope = shown && nearRope(e.clientX, e.clientY)
+      const inStrip = revealed && !pinned && e.clientY < stripBottom
+      document.body.style.cursor = onRope && !overItem ? 'copy' : ''
+      setInteractive(overItem || onRope || inStrip)
     }
-    const onLeave = () => setInteractive(false)
+    const onLeave = () => {
+      if (!drag.current) setInteractive(false)
+    }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseleave', onLeave)
     return () => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseleave', onLeave)
     }
-  }, [shown])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload, shown, revealed, pinned, setInteractive])
+
+  // 拖夹子：沿绳子左右移动，松手后保存位置
+  const onPinDown = useCallback(
+    (e: ReactPointerEvent, id: string, onClick: () => void) => {
+      const r = rope.current
+      const it = items.current.find((i) => i.id === id)
+      if (!r || !it || e.button !== 0) return
+      e.preventDefault()
+      const current = overrides.current.get(id) ?? it.x * r.width
+      drag.current = { id, offset: e.clientX - current, startX: e.clientX, moved: false }
+      const el = elements.current.get(id)
+      if (el) el.style.zIndex = String(++topZ.current)
+      setInteractive(true)
+      const move = (ev: PointerEvent) => {
+        const d = drag.current
+        if (!d) return
+        if (Math.abs(ev.clientX - d.startX) > 3) d.moved = true
+        const x = Math.min(r.width * X_MAX, Math.max(r.width * X_MIN, ev.clientX - d.offset))
+        overrides.current.set(id, x)
+        wake()
+      }
+      const up = () => {
+        document.removeEventListener('pointermove', move)
+        document.removeEventListener('pointerup', up)
+        const d = drag.current
+        drag.current = null
+        if (!d) return
+        const x = overrides.current.get(id)
+        if (d.moved && x !== undefined) window.overlay?.move(id, x / r.width)
+        else {
+          overrides.current.delete(id)
+          onClick()
+        }
+        wake()
+      }
+      document.addEventListener('pointermove', move)
+      document.addEventListener('pointerup', up)
+    },
+    [setInteractive, wake],
+  )
 
   if (!payload) return null
   const width = payload.bounds.width
-  // 时钟在最左边，其余从旧到新往右排
-  const hangables: Hangable[] = [
-    ...(payload.clock ? [{ id: 'clock', type: 'clock' } as const] : []),
-    ...[...payload.items].reverse(),
-  ]
 
   return (
-    <div
-      className={cn(
-        'absolute left-0 w-full transition-[translate]',
-        shown ? 'duration-[420ms] ease-[cubic-bezier(.34,1.25,.64,1)]' : 'duration-[220ms] ease-in',
-      )}
-      style={{
-        top: payload.topInset,
-        height: PANEL_HEIGHT,
-        // 收起时整根绳子藏到屏幕上边缘外面，像自动隐藏的 Dock
-        translate: `0 ${shown ? 0 : -(PANEL_HEIGHT + payload.topInset + 12)}px`,
-      }}
-    >
-      <Rope width={width} />
-      {hangables.length === 0 && (
-        <div className="absolute top-[34px] left-1/2 -translate-x-1/2 rounded-full border border-white/50 bg-background/85 px-3 py-1.5 text-xs font-medium text-muted-foreground shadow dark:border-white/15">
-          截图，或在 uTools 里选「挂到晾衣绳」，东西就会挂在这里
+    <>
+      <div
+        className={cn(
+          'absolute left-0 w-full transition-[translate]',
+          shown ? 'duration-[420ms] ease-[cubic-bezier(.34,1.25,.64,1)]' : 'duration-[220ms] ease-in',
+        )}
+        style={{
+          top: payload.topInset,
+          height: PANEL_HEIGHT,
+          // 收起时整根绳子藏到屏幕上边缘外面，像自动隐藏的 Dock
+          translate: `0 ${shown ? 0 : -(PANEL_HEIGHT + payload.topInset + 12)}px`,
+        }}
+        onClick={(e) => {
+          // 点绳子空白处：加一个空夹子
+          if ((e.target as Element).closest('[data-hit]')) return
+          if (nearRope(e.clientX, e.clientY)) window.overlay?.addClip(e.clientX / width)
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault()
+          const clipId = (e.target as Element).closest<HTMLElement>('[data-clip]')?.dataset.clip
+          window.overlay?.drop(e.dataTransfer.files, e.clientX / width, clipId)
+        }}
+      >
+        <canvas ref={canvasRef} className="pointer-events-none absolute top-0 left-0" style={{ width, height: PANEL_HEIGHT }} />
+        {payload.items.length === 0 && (
+          <div className="pointer-events-none absolute top-[44px] left-1/2 -translate-x-1/2 rounded-full border border-white/50 bg-background/85 px-3 py-1.5 text-xs font-medium text-muted-foreground shadow dark:border-white/15">
+            点绳子加个夹子，或截图、在 uTools 里选「挂到晾衣绳」
+          </div>
+        )}
+        {payload.items.map((item) => (
+          <Pegged key={item.id} item={item} bind={bind} onPinDown={onPinDown} kick={kick} />
+        ))}
+      </div>
+      {/* 收起时屏幕顶部中间留一个小把手：碰一下就拉下来 */}
+      {!shown && (
+        <div
+          data-hit
+          title="拉下晾衣绳"
+          className="group absolute left-1/2 flex -translate-x-1/2 cursor-pointer justify-center px-6 pt-1 pb-2"
+          style={{ top: payload.topInset }}
+          onMouseEnter={() => reveal(true)}
+          onClick={() => reveal(true)}
+        >
+          <div className="h-[5px] w-14 rounded-full bg-neutral-500/40 shadow-[0_0_0_0.5px_rgba(255,255,255,0.5)] transition group-hover:w-20 group-hover:bg-neutral-500/70" />
         </div>
       )}
-      {hangables.map((item, i) => {
-        const x = itemX(i, hangables.length, width)
-        return (
-          <div
-            key={item.id}
-            className="absolute transition-[left,top] duration-500 ease-[cubic-bezier(.34,1.2,.64,1)]"
-            style={{
-              left: x - CARD_WIDTH / 2,
-              top: ropeY(x, width) - PIN_ABOVE,
-              // 靠近屏幕边缘的淡出
-              opacity: Math.min(1, Math.max(0, Math.min(x, width - x) / 90)),
-            }}
-          >
-            <Pegged item={item} gust={gust} />
-          </div>
-        )
-      })}
-    </div>
+    </>
   )
 }
