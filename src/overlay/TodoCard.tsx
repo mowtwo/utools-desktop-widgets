@@ -31,7 +31,7 @@ export function TodoCard({ item }: { item: TodoItem }) {
     <div
       // 整张卡片都接收鼠标：否则鼠标停在文字上时悬浮层会切回点击穿透，悬停出不来关闭按钮和删除 ×
       data-hit
-      className={cn('flex flex-col gap-1 rounded-[14px] border px-2 py-1.5 shadow-[0_5px_10px_rgba(0,0,0,0.16)]', palette.card)}
+      className={cn('flex flex-col gap-1 rounded-[14px] border px-2 pt-3 pb-1.5 shadow-[0_5px_10px_rgba(0,0,0,0.16)]', palette.card)}
       style={{ width: CARD_WIDTH - 14 }}
     >
       {item.lines.length === 0 && <div className="py-1 text-center text-[11px] opacity-60">空的待办卡</div>}

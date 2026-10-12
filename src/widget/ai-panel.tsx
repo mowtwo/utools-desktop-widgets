@@ -148,7 +148,7 @@ export function AiPanel({ draft, errors, onApply }: Props) {
             }
           }}
           rows={2}
-          placeholder="说说想要什么挂件，比如：显示距离周五还有几天；或者：把按钮改成绿色（⌘↵ 发送）"
+          placeholder={`说说想要什么挂件，比如：显示距离周五还有几天；或者：把按钮改成绿色（${navigator.userAgent.includes('Mac') ? '⌘↵' : 'Ctrl+Enter'} 发送）`}
           className="min-h-0 flex-1 resize-none rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring"
         />
         <div className="flex flex-col gap-1">

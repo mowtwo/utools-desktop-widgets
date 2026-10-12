@@ -153,6 +153,8 @@ export function CodeEditor({ value, onChange, dark, json, className }: Props) {
   const view = useRef<EditorView | null>(null)
   const theme = useRef(new Compartment())
   const onChangeRef = useRef(onChange)
+  // 外部换掉 value 时也会触发 docChanged，那不是用户的编辑，不能回调 onChange（否则一切换扩展就标成未保存）
+  const syncing = useRef(false)
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -169,7 +171,7 @@ export function CodeEditor({ value, onChange, dark, json, className }: Props) {
           ...(json ? [] : [autocompletion({ override: [widgetCompletions] }), widgetHover]),
           theme.current.of(dark ? oneDark : []),
           EditorView.updateListener.of((u) => {
-            if (u.docChanged) onChangeRef.current(u.state.doc.toString())
+            if (u.docChanged && !syncing.current) onChangeRef.current(u.state.doc.toString())
           }),
           EditorView.theme({
             '&': { height: '100%', fontSize: '12px', backgroundColor: 'transparent' },
@@ -190,7 +192,12 @@ export function CodeEditor({ value, onChange, dark, json, className }: Props) {
   useEffect(() => {
     const v = view.current
     if (v && v.state.doc.toString() !== value) {
-      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value } })
+      syncing.current = true
+      try {
+        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value } })
+      } finally {
+        syncing.current = false
+      }
     }
   }, [value])
 

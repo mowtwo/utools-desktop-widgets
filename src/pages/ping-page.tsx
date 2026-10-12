@@ -28,6 +28,8 @@ const OUTPUTS: { value: PingSettings['output']; label: string }[] = [
   { value: 'none', label: '不截图' },
 ]
 
+const IS_MAC = navigator.userAgent.includes('Mac')
+
 /** 轮盘位置的名字：从正上方开始顺时针 */
 const SLOT_NAMES = ['上', '右上', '右', '右下', '下', '左下', '左', '左上']
 
@@ -67,7 +69,7 @@ export function PingPage({ ping }: { ping: PingSettings }) {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 p-5">
       <section className="divide-y rounded-xl border bg-card">
-        <Row icon={<Keyboard />} title="快捷键" hint="按下后在光标处弹出信号轮盘；推荐「双击 ⌥ Option」">
+        <Row icon={<Keyboard />} title="快捷键" hint={`按下后在光标处弹出信号轮盘；推荐「双击 ${IS_MAC ? '⌥ Option' : 'Alt'}」`}>
           <span className="font-mono text-xs text-muted-foreground">{hotKey ?? '未设置'}</span>
           <Button variant="outline" size="sm" onClick={services.setPingHotKey}>
             设置
