@@ -14,7 +14,26 @@ interface UToolsPluginEnterAction {
   from: 'main' | 'panel' | 'hotkey' | 'redirect'
 }
 
+interface UToolsAiMessage {
+  role: 'system' | 'user' | 'assistant'
+  content?: string
+  reasoning_content?: string
+}
+
+interface UToolsAiPromise<T> extends Promise<T> {
+  abort(): void
+}
+
+interface UToolsAiModel {
+  id: string
+  label: string
+  icon: string
+  cost?: number
+}
+
 interface UToolsApi {
+  ai(options: { model?: string; messages: UToolsAiMessage[] }, stream: (chunk: UToolsAiMessage) => void): UToolsAiPromise<void>
+  allAiModels(): Promise<UToolsAiModel[]>
   onPluginEnter(cb: (action: UToolsPluginEnterAction) => void): void
   isDarkColors(): boolean
   isDev(): boolean
@@ -42,8 +61,8 @@ interface Window {
     setDebugHud(on: boolean): void
     setFocusOnReveal(on: boolean): void
     setRenderAnchor(on: boolean): void
-    seedExtensions(builtins: import('@/widget/runtime').WidgetExtension[]): void
-    saveExtension(ext: Omit<import('@/widget/runtime').WidgetExtension, 'id'> & { id?: string }): string
+    seedExtensions(builtins: import('@/widget/protocol').WidgetExtension[]): void
+    saveExtension(ext: Omit<import('@/widget/protocol').WidgetExtension, 'id'> & { id?: string }): string
     removeExtension(id: string): void
     hangWidget(ext: string): void
     addTodo(text: string): void

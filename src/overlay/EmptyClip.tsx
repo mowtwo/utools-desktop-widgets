@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Blocks, Camera, ClipboardPaste, FolderOpen, ListTodo, Plus, Trash2 } from 'lucide-react'
 import { TODO_MAX } from '@/types/line'
-import type { WidgetExtension } from '@/widget/runtime'
+import type { WidgetExtension } from '@/widget/protocol'
 import { cn } from '@/lib/utils'
 import { glass } from './styles'
 

@@ -563,14 +563,23 @@ window.services = {
   setDisplay: (displayId) => update({ displayId }),
   /** 首次启动时写入内置扩展；数据库里已有同名文档（比如别的设备同步过来）就跳过 */
   seedExtensions(builtins) {
-    if (state.seeded) return
+    let changed = false
     for (const ext of builtins) {
-      if (!utools.db.get(EXT_PREFIX + ext.id)) {
+      const existing = utools.db.get(EXT_PREFIX + ext.id)
+      if (!existing && !state.seeded) {
         utools.db.put({ _id: EXT_PREFIX + ext.id, ...extDoc(ext), builtin: true })
+        changed = true
+      } else if (existing && existing.builtin && !String(existing.code).includes('defineWidget')) {
+        // 旧版的内置扩展（直接写 HTML 的写法）升级成新写法；用户自己的扩展不动
+        utools.db.put({ _id: existing._id, _rev: existing._rev, ...extDoc(ext), builtin: true })
+        log('builtin-upgraded', { id: ext.id })
+        changed = true
       }
     }
+    if (!changed && state.seeded) return
     extensions = loadExtensions()
-    update({ seeded: true })
+    if (state.seeded) emit()
+    else update({ seeded: true })
   },
   /** 新建或保存扩展，返回扩展 id */
   saveExtension(ext) {

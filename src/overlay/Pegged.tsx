@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Check, Puzzle, X } from 'lucide-react'
 import type { LineItem } from '@/types/line'
-import type { HandleContent, LineOp, WidgetExtension } from '@/widget/runtime'
-import { WidgetFrame, type WidgetHost } from '@/widget/WidgetFrame'
+import type { HandleContent, LineOp, WidgetExtension } from '@/widget/protocol'
+import { WidgetView, type WidgetHost } from '@/widget/WidgetView'
 import { cn } from '@/lib/utils'
 import { EmptyClip } from './EmptyClip'
 import { FolderHanger } from './FolderHanger'
@@ -135,7 +135,7 @@ function WidgetCard({ id, extId, extension, data, themeKey, onLine, onHandle }: 
   }
   return (
     <div data-hit className={cn('relative rounded-[16px] p-1 shadow-[0_5px_10px_rgba(0,0,0,0.18)]', glass)}>
-      <WidgetFrame ext={extension} data={data} host={host} themeKey={themeKey} />
+      <WidgetView ext={extension} data={data} host={host} themeKey={themeKey} />
       {error && (
         <div
           title={error}

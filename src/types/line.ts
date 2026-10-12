@@ -1,4 +1,4 @@
-import type { WidgetExtension } from '@/widget/runtime'
+import type { WidgetExtension } from '@/widget/protocol'
 
 interface ItemBase {
   id: string

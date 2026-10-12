@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, Plus, Puzzle, Save, Send, Trash2 } from 'lucide-react'
+import { Plus, Puzzle, Save, Send, Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CodeEditor } from '@/components/code-editor'
-import { API_DOCS, CSS_HELPERS, TEMPLATE } from '@/widget/builtins'
+import { TEMPLATE } from '@/widget/builtins'
+import { AiPanel } from '@/widget/ai-panel'
+import { WidgetDocsDialog } from '@/widget/docs-dialog'
 import type { ExtError } from '@/types/line'
-import type { WidgetExtension } from '@/widget/runtime'
-import { WidgetFrame, type WidgetHost } from '@/widget/WidgetFrame'
+import type { WidgetExtension } from '@/widget/protocol'
+import { WidgetView, type WidgetHost } from '@/widget/WidgetView'
 import { cn } from '@/lib/utils'
 
 type Draft = Omit<WidgetExtension, 'id'> & { id?: string }
@@ -37,7 +39,7 @@ export function ExtensionsPage({ extensions, extErrors, dark }: PageProps) {
   const [dirty, setDirty] = useState(false)
   /** 预览报的错，按预览内容分组：代码一改旧错误就不再显示 */
   const [errorLog, setErrorLog] = useState<{ key: string; list: string[] }>({ key: '', list: [] })
-  const [showDocs, setShowDocs] = useState(false)
+  const [showAi, setShowAi] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -163,12 +165,18 @@ export function ExtensionsPage({ extensions, extErrors, dark }: PageProps) {
                 onChange={(e) => edit({ height: Number(e.target.value) })}
               />
             </label>
+            <Button variant={showAi ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowAi(!showAi)}>
+              <Sparkles /> AI 帮写
+            </Button>
+            <WidgetDocsDialog />
           </div>
+
+          {showAi && <AiPanel draft={draft} errors={errors} onApply={edit} />}
 
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_180px] gap-3">
             <div className="flex min-h-0 flex-col gap-2">
               <CodeEditor className="min-h-0 flex-1" value={draft.code} onChange={(code) => edit({ code })} dark={dark} />
-              <div className="text-xs font-medium text-muted-foreground">设置（JSON，脚本里用 api.settings 读取）</div>
+              <div className="text-xs font-medium text-muted-foreground">设置（JSON，脚本里用 ctx.settings 读取）</div>
               <CodeEditor
                 className="h-24 shrink-0"
                 json
@@ -183,7 +191,7 @@ export function ExtensionsPage({ extensions, extErrors, dark }: PageProps) {
               <div className="flex min-h-36 items-center justify-center rounded-lg border bg-[linear-gradient(135deg,#bae6fd,#e9d5ff)] p-3 dark:bg-[linear-gradient(135deg,#1e293b,#312e81)]">
                 {preview && (
                   <div className="rounded-[16px] border border-white/50 bg-background/85 p-1 shadow dark:border-white/15">
-                    <WidgetFrame ext={preview} host={host} themeKey={dark} />
+                    <WidgetView ext={preview} host={host} themeKey={dark} />
                   </div>
                 )}
               </div>
@@ -197,23 +205,6 @@ export function ExtensionsPage({ extensions, extErrors, dark }: PageProps) {
               {draft.id && extErrors[draft.id]?.length ? (
                 <RuntimeErrors errors={extErrors[draft.id]} onClear={() => services.clearExtErrors(draft.id!)} />
               ) : null}
-              <Button variant="ghost" size="sm" className="justify-start" onClick={() => setShowDocs(!showDocs)}>
-                <BookOpen /> API 说明
-              </Button>
-              {showDocs && (
-                <div className="min-h-0 flex-1 overflow-auto rounded-md border p-2 text-[11px] leading-relaxed">
-                  {API_DOCS.map((d) => (
-                    <div key={d.signature} className="mb-1.5">
-                      <code className="font-mono text-foreground">{d.signature}</code>
-                      <div className="text-muted-foreground">{d.doc}</div>
-                    </div>
-                  ))}
-                  <div className="mt-2 text-muted-foreground">{CSS_HELPERS}</div>
-                  <div className="mt-2 text-muted-foreground">
-                    挂件在沙箱里运行，不能访问本地文件和插件的其他数据；需要的话用 fetch 请求允许跨域的网络接口。
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 

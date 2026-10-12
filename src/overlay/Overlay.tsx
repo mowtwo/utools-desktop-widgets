@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { LineItem, OverlayPayload } from '@/types/line'
-import type { HandleContent, LineOp } from '@/widget/runtime'
+import type { HandleContent, LineOp } from '@/widget/protocol'
 import { applyTheme } from '@/lib/theme'
 import { CARD_WIDTH, PANEL_HEIGHT, PIN_ABOVE, tiltOf } from './layout'
 import { Pegged } from './Pegged'
@@ -226,7 +226,7 @@ export default function Overlay() {
     dragOutUntil.current = Date.now() + DRAG_OUT_MAX_MS
   }, [])
 
-  // 挂件的 api.line.*：宿主（WidgetFrame）已经校验过参数和频率
+  // 挂件的 api.line.*：宿主（WidgetView）已经校验过参数和频率
   const onWidgetLine = useCallback(
     (id: string, op: LineOp, value?: boolean) => {
       switch (op) {
