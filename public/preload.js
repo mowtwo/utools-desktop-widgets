@@ -28,11 +28,21 @@ const defaultState = {
   displayId: null,
   /** 最多挂几件（只算图片、便签、文件，不算时钟和空夹子） */
   maxItems: 12,
+  /** 收起后小把手的位置：left / center / right；null 表示自动（刘海屏放右边） */
+  handle: null,
   /** 每件都有 x：在绳子上的位置，占绳长的比例 */
   items: [{ id: 'clock', type: 'clock', x: 0.12, createdAt: 0 }],
 }
 
 const clampX = (x) => Math.min(X_MAX, Math.max(X_MIN, x))
+
+/**
+ * 是否是刘海屏：官方 API 没有直接给出刘海区域，按菜单栏高度推断。
+ * 带刘海的 MacBook 菜单栏约 33~37pt，普通屏幕约 24pt；开了自动隐藏菜单栏时无法识别。
+ */
+function hasNotch(display) {
+  return utools.isMacOS() && display.workArea.y - display.bounds.y >= 30
+}
 
 function loadState() {
   try {
@@ -93,6 +103,8 @@ function snapshot() {
     activeDisplayId: display.id,
     displayFallback: fallback,
     maxItems: state.maxItems,
+    handle: state.handle,
+    notch: hasNotch(display),
     clock: state.items.some((it) => it.type === 'clock'),
     items: viewItems(),
   }
@@ -110,6 +122,8 @@ function pushToOverlay() {
     bounds: display.bounds,
     // macOS 菜单栏、顶部任务栏占掉的高度，绳子挂在它下面
     topInset: display.workArea.y - display.bounds.y,
+    notch: hasNotch(display),
+    handle: state.handle || (hasNotch(display) ? 'right' : 'center'),
   })
 }
 
@@ -379,6 +393,7 @@ window.services = {
   },
   setEnabled: (enabled) => update({ enabled }),
   setMode: (mode) => update({ mode }),
+  setHandle: (handle) => update({ handle }),
   setDisplay: (displayId) => update({ displayId }),
   setClock(on) {
     const items = state.items.filter((it) => it.type !== 'clock')

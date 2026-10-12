@@ -20,6 +20,10 @@ const HANDLE_PAD = 2
 /** 夹子能放的范围（占绳长的比例） */
 const X_MIN = 0.04
 const X_MAX = 0.96
+/** 刘海屏上碰顶触发要避开的中间区域半宽（px）：刘海约 200pt 宽，两边再留些余量 */
+const NOTCH_HALF = 130
+/** 小把手的水平位置（占屏幕宽度的比例） */
+const HANDLE_X = { left: 0.25, center: 0.5, right: 0.75 }
 
 /** 每种东西压在绳子上的分量（相对一个绳节） */
 const WEIGHT: Record<LineItem['type'], number> = { image: 10, file: 10, note: 7, clock: 8, clip: 2 }
@@ -171,7 +175,8 @@ export default function Overlay() {
   // 自动隐藏：鼠标顶到屏幕上边缘就滑出，离开晾衣绳就收起
   useEffect(() => {
     if (!payload || pinned) return
-    const { bounds, topInset } = payload
+    const { bounds, topInset, notch } = payload
+    const center = bounds.x + bounds.width / 2
     let edgeSince = 0
     let awaySince = 0
     return window.overlay?.watchCursor((p) => {
@@ -179,7 +184,9 @@ export default function Overlay() {
       const inside = p.x >= bounds.x && p.x < bounds.x + bounds.width && p.y >= bounds.y && p.y < bounds.y + bounds.height
       if (!revealedRef.current) {
         awaySince = 0
-        if (inside && p.y <= bounds.y + 1) {
+        // 刘海那一段不触发：鼠标推进刘海通常是想用刘海里的东西
+        const inNotch = notch && Math.abs(p.x - center) < NOTCH_HALF
+        if (inside && p.y <= bounds.y + 1 && !inNotch) {
           edgeSince ||= now
           if (now - edgeSince >= REVEAL_DWELL_MS) reveal(true)
         } else {
@@ -312,8 +319,8 @@ export default function Overlay() {
         <div
           data-hit
           title="拉下晾衣绳"
-          className="group absolute left-1/2 flex -translate-x-1/2 cursor-pointer justify-center px-6 pt-1 pb-2"
-          style={{ top: payload.topInset }}
+          className="group absolute flex -translate-x-1/2 cursor-pointer justify-center px-6 pt-1 pb-2"
+          style={{ top: payload.topInset, left: `${HANDLE_X[payload.handle] * 100}%` }}
           onMouseEnter={() => reveal(true)}
           onClick={() => reveal(true)}
         >

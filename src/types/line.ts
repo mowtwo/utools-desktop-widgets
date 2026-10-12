@@ -46,6 +46,8 @@ export const isContent = (it: LineItem): it is ContentItem =>
 
 export type LineMode = 'auto' | 'pinned'
 
+export type HandlePosition = 'left' | 'center' | 'right'
+
 export interface LineState {
   enabled: boolean
   mode: LineMode
@@ -54,6 +56,10 @@ export interface LineState {
   /** 选中的屏幕不在了，暂时显示在主屏 */
   displayFallback: boolean
   maxItems: number
+  /** null 表示自动 */
+  handle: HandlePosition | null
+  /** 当前屏幕是刘海屏 */
+  notch: boolean
   clock: boolean
   items: LineItem[]
 }
@@ -79,4 +85,6 @@ export interface OverlayPayload {
   items: LineItem[]
   bounds: Rect
   topInset: number
+  notch: boolean
+  handle: HandlePosition
 }

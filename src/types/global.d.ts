@@ -34,6 +34,7 @@ interface Window {
     start(): void
     setEnabled(enabled: boolean): void
     setMode(mode: import('./line').LineMode): void
+    setHandle(handle: import('./line').HandlePosition | null): void
     setDisplay(displayId: number | null): void
     setClock(clock: boolean): void
     setMaxItems(maxItems: number): void

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bug, Camera, Clock, FolderOpen, Layers, Monitor, PanelTopOpen, Shirt, StickyNote, Trash2, X } from 'lucide-react'
+import { Bug, Camera, Clock, FolderOpen, GripHorizontal, Layers, Monitor, PanelTopOpen, Shirt, StickyNote, Trash2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useLine } from '@/lib/use-line'
-import { isContent, type ContentItem, type DisplayInfo, type LineMode } from '@/types/line'
+import { isContent, type ContentItem, type DisplayInfo, type HandlePosition, type LineMode } from '@/types/line'
 
 const PRIMARY = 'primary'
 const MAX_CHOICES = [6, 8, 12, 20]
@@ -136,6 +136,30 @@ export default function App() {
             <ToggleGroupItem value="pinned">常驻</ToggleGroupItem>
           </ToggleGroup>
         </Row>
+        {line.mode === 'auto' && (
+          <Row
+            icon={<GripHorizontal />}
+            title="把手位置"
+            hint={
+              line.notch
+                ? '检测到刘海屏：默认放右边，碰顶触发也会避开刘海'
+                : '收起后屏幕顶部的小把手，碰一下就拉下来'
+            }
+          >
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={line.handle ?? 'auto'}
+              onValueChange={(v) => v && services.setHandle(v === 'auto' ? null : (v as HandlePosition))}
+            >
+              <ToggleGroupItem value="auto">自动</ToggleGroupItem>
+              <ToggleGroupItem value="left">左</ToggleGroupItem>
+              <ToggleGroupItem value="center">中</ToggleGroupItem>
+              <ToggleGroupItem value="right">右</ToggleGroupItem>
+            </ToggleGroup>
+          </Row>
+        )}
         <Row icon={<Clock />} title="时钟" hint="也是一件挂在绳上的东西，可以拖动">
           <Switch checked={line.clock} onCheckedChange={services.setClock} />
         </Row>

@@ -8,6 +8,8 @@ const fallback: LineState = {
   activeDisplayId: 0,
   displayFallback: false,
   maxItems: 12,
+  handle: null,
+  notch: false,
   clock: true,
   items: [],
 }
