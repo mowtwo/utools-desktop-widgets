@@ -8,6 +8,9 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { FOCUS_TODO_EVENT } from '@/lib/enter'
+import { Row } from '@/components/row'
+import { PingPage } from '@/pages/ping-page'
+import { RugPage } from '@/pages/rug-page'
 import { useLine } from '@/lib/use-line'
 import { cn } from '@/lib/utils'
 import {
@@ -39,20 +42,6 @@ function displayName(d: DisplayInfo, index: number) {
   return `${name} · ${d.width}×${d.height}${d.primary ? ' · 主屏' : ''}`
 }
 
-function Row({ icon, title, hint, children }: { icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="text-muted-foreground [&_svg]:size-4">{icon}</span>
-        <div className="min-w-0">
-          <div className="text-sm font-medium">{title}</div>
-          {hint && <div className="truncate text-xs text-muted-foreground">{hint}</div>}
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">{children}</div>
-    </div>
-  )
-}
 
 function ItemRow({ item }: { item: ContentItem | TodoItem }) {
   const services = window.services!
@@ -115,11 +104,19 @@ export default function App() {
       <div className="flex justify-center border-b px-5 py-2">
         <TabsList>
           <TabsTrigger value="line">晾衣绳</TabsTrigger>
+          <TabsTrigger value="ping">信号</TabsTrigger>
+          <TabsTrigger value="rug">地毯</TabsTrigger>
           <TabsTrigger value="extensions">挂件扩展</TabsTrigger>
         </TabsList>
       </div>
       <TabsContent value="line" className="min-h-0 flex-1 overflow-auto">
         <LinePage line={line} />
+      </TabsContent>
+      <TabsContent value="ping" className="min-h-0 flex-1 overflow-auto">
+        <PingPage ping={line.ping} />
+      </TabsContent>
+      <TabsContent value="rug" className="min-h-0 flex-1 overflow-auto">
+        <RugPage rug={line.rug} />
       </TabsContent>
       <TabsContent value="extensions" className="min-h-0 flex-1 p-4">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">加载编辑器…</div>}>

@@ -7,3 +7,21 @@ html.overlay body {
   overflow: hidden;
   user-select: none;
 }
+
+/* 信号动画 */
+@keyframes ping-pop {
+  0% { scale: 0.2; opacity: 0; }
+  12% { scale: 1.15; opacity: 1; }
+  22% { scale: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; scale: 0.9; }
+}
+@keyframes ping-ripple {
+  0% { scale: 0.6; opacity: 0.9; }
+  100% { scale: 2.6; opacity: 0; }
+}
+@keyframes ping-fade {
+  0%, 10% { opacity: 0; translate: 0 -4px; }
+  20%, 85% { opacity: 1; translate: 0 0; }
+  100% { opacity: 0; }
+}

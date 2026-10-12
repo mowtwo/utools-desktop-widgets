@@ -24,8 +24,34 @@ document.addEventListener('visibilitychange', () => log('visibility', document.v
 log('start', { visibility: document.visibilityState })
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'svg']
 
+/** 信号截图的请求编号 -> 回调 */
+const captureWaiters = new Map()
+let captureSeq = 0
+ipcRenderer.on('overlay:ping-captured', (_e, reqId, result) => {
+  captureWaiters.get(reqId)?.(result)
+  captureWaiters.delete(reqId)
+})
+
 window.overlay = {
   log,
+  /** 信号快捷键：point 是光标的屏幕坐标 */
+  onPingOpen(listener) {
+    ipcRenderer.on('overlay:ping-open', (_e, point) => listener(point))
+  },
+  /** 截取屏幕上的一块（屏幕全局 DIP 坐标），返回 Data URL 和截图的像素比例 */
+  pingCapture(rect) {
+    const reqId = ++captureSeq
+    return new Promise((resolve) => {
+      captureWaiters.set(reqId, resolve)
+      utools.sendToParent('overlay:ping-capture', reqId, rect)
+      setTimeout(() => {
+        if (captureWaiters.delete(reqId)) resolve({ error: '截图超时' })
+      }, 5000)
+    })
+  },
+  pingResult(dataUrl) {
+    utools.sendToParent('overlay:ping-result', dataUrl)
+  },
   onState(listener) {
     ipcRenderer.on('overlay:state', (_e, payload) => listener(payload))
   },

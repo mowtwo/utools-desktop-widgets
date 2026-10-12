@@ -27,6 +27,11 @@ export async function handlePluginEnter(action: UToolsPluginEnterAction) {
       }
       return
     }
+    case 'ping': {
+      window.utools?.hideMainWindow()
+      services.ping()
+      return
+    }
     case 'peek': {
       services.peek()
       window.utools?.hideMainWindow()

@@ -61,6 +61,12 @@ interface Window {
     setDebugHud(on: boolean): void
     setFocusOnReveal(on: boolean): void
     setRenderAnchor(on: boolean): void
+    ping(): void
+    setPing(patch: Partial<import('./line').PingSettings>): void
+    pingHotKey(): string | null
+    setPingHotKey(): void
+    setRug(patch: Partial<import('./line').RugSettings>): void
+    resetRug(): void
     seedExtensions(builtins: import('@/widget/protocol').WidgetExtension[]): void
     saveExtension(ext: Omit<import('@/widget/protocol').WidgetExtension, 'id'> & { id?: string }): string
     removeExtension(id: string): void
@@ -83,6 +89,9 @@ interface Window {
   /** 悬浮层窗口 preload（public/overlay_preload.js） */
   overlay?: {
     log(event: string, detail?: unknown): void
+    onPingOpen(listener: (point: { x: number; y: number }) => void): void
+    pingCapture(rect: { x: number; y: number; width: number; height: number }): Promise<{ dataUrl?: string; scale?: number; error?: string }>
+    pingResult(dataUrl: string): void
     onState(listener: (payload: import('./line').OverlayPayload) => void): void
     onPeek(listener: (duration?: number) => void): void
     ready(): void

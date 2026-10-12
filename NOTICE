@@ -31,3 +31,52 @@ SOFTWARE.
 
 Tendedero's license does not cover the Tendedero name or icon. This project
 uses neither.
+
+
+----------------------------------------------------------------------
+
+Desktop rug (src/rug/vendor) is adapted from desktop-rug. The rug idea and
+its visual design are by Terkel (https://x.com/terkelg).
+
+desktop-rug
+https://github.com/josssphzhou/desktop-rug (commit 85e609f19ef1)
+
+MIT License
+
+Copyright (c) 2026 Joseph Zhou
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+The rug uses three.js (MIT, https://threejs.org) and Paper Shaders
+(Apache-2.0, https://github.com/paper-design/shaders), installed as npm
+dependencies with their own license files.
+
+----------------------------------------------------------------------
+
+The signal wheel interaction is inspired by lolPing
+(https://github.com/darrenprx/lolPing, MIT, Copyright (c) 2026 Danrui Meng).
+No code, icons or sounds from lolPing or from League of Legends are used:
+lolPing's ping icons and sounds belong to Riot Games and are not covered by
+its MIT license. This project draws its own signal icons.
+
+----------------------------------------------------------------------
+
+Signal sounds (public/sounds) are from Interface Sounds by Kenney
+(https://www.kenney.nl), released under Creative Commons Zero (CC0 1.0):
+http://creativecommons.org/publicdomain/zero/1.0/

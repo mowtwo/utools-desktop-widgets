@@ -62,6 +62,24 @@ export const isContent = (it: LineItem): it is ContentItem =>
 
 export type LineMode = 'auto' | 'pinned'
 
+export interface RugSettings {
+  enabled: boolean
+  material: string
+  quality: 'high' | 'medium' | 'low'
+  precision: 'fine' | 'standard' | 'eco'
+}
+
+export interface PingSettings {
+  /** 轮盘从正上方开始顺时针的 8 个信号 id */
+  wheel: string[]
+  /** 截图尺寸（DIP） */
+  width: number
+  height: number
+  icon: 'sm' | 'md' | 'lg'
+  output: 'none' | 'copy' | 'hang' | 'both'
+  sound: boolean
+}
+
 export type HandlePosition = 'left' | 'center' | 'right'
 
 export interface LineState {
@@ -88,6 +106,8 @@ export interface LineState {
   focusOnReveal: boolean
   /** 渲染保活点 */
   renderAnchor: boolean
+  ping: PingSettings
+  rug: RugSettings
   items: LineItem[]
   extensions: WidgetExtension[]
 }
@@ -121,6 +141,7 @@ export interface OverlayPayload {
   debug: boolean
   /** 渲染保活点 */
   renderAnchor: boolean
+  ping: PingSettings
 }
 
 export interface ExtError {

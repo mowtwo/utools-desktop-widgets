@@ -21,6 +21,8 @@ export default defineConfig({
         index: path.resolve(import.meta.dirname, 'index.html'),
         // 自定义窗口：每块屏幕一个全屏透明悬浮层
         overlay: path.resolve(import.meta.dirname, 'overlay.html'),
+        // 自定义窗口：桌面地毯，铺在桌面图标上、所有应用窗口下面
+        rug: path.resolve(import.meta.dirname, 'rug.html'),
       },
     },
   },

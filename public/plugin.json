@@ -19,6 +19,14 @@
       ]
     },
     {
+      "code": "ping",
+      "description": "在光标位置发一个信号，可以顺手截一块图",
+      "cmds": [
+        "发信号"
+      ],
+      "mainHide": true
+    },
+    {
       "code": "toggle",
       "description": "显示或隐藏晾衣绳",
       "cmds": [

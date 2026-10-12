@@ -6,6 +6,7 @@ import { CARD_WIDTH, PANEL_HEIGHT, PIN_ABOVE, tiltOf } from './layout'
 import { Pegged } from './Pegged'
 import { Pendulum, Rope, type Load } from './physics'
 import { drawRope } from './Rope'
+import { PingLayer } from '@/ping/PingLayer'
 
 /** 鼠标在屏幕最上边缘停留多久后滑出 */
 const REVEAL_DWELL_MS = 250
@@ -501,6 +502,7 @@ export default function Overlay() {
       </div>
       {payload.debug && <DebugHud stats={slideStats} revealed={revealed} />}
       {payload.renderAnchor && <RenderAnchor />}
+      <PingLayer settings={payload.ping} bounds={payload.bounds} />
       {/* 收起时屏幕顶部中间留一个小把手：碰一下就拉下来 */}
       {!shown && (
         <div

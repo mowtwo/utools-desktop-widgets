@@ -49,6 +49,26 @@ const defaultState = {
   hideDelay: 800,
   /** 每个扩展在悬浮层里的运行报错：{ [extId]: [{ time, message, line, fatal, count }] }，每个最多留 20 条 */
   extErrors: {},
+  /** 信号：轮盘上的 8 个信号、截图尺寸、叠加的图标大小、截图后怎么处理、提示音 */
+  ping: {
+    wheel: ['alert', 'coming', 'help', 'look', 'done', 'idea', 'question', 'danger'],
+    width: 480,
+    height: 300,
+    icon: 'md',
+    /** none 不截图 / copy 复制 / hang 挂到晾衣绳 / both 复制并挂上 */
+    output: 'copy',
+    /** 提示音默认关，免得吵 */
+    sound: false,
+  },
+  /** 桌面地毯：花样、渲染等级、拖拽精度 */
+  rug: {
+    enabled: false,
+    material: 'persian',
+    /** high / medium / low：像素密度、阴影质量 */
+    quality: 'medium',
+    /** fine / standard / eco：布料模拟的迭代次数 */
+    precision: 'standard',
+  },
   /** 渲染保活点：悬浮层持续小幅重绘，避免拉下后不显示 */
   renderAnchor: true,
   /** 试验：用户拉下晾衣绳时让悬浮层获得焦点，换取正常的渲染帧率，代价是抢走当前窗口的键盘焦点 */
@@ -77,7 +97,12 @@ function hasNotch(display) {
 function loadState() {
   try {
     const saved = JSON.parse(fs.readFileSync(stateFile, 'utf-8'))
-    const state = { ...defaultState, ...saved }
+    const state = {
+      ...defaultState,
+      ...saved,
+      ping: { ...defaultState.ping, ...(saved.ping || {}) },
+      rug: { ...defaultState.rug, ...(saved.rug || {}) },
+    }
     // 清掉文件已经不存在的图片
     state.items = state.items.filter((it) => it.type !== 'image' || fs.existsSync(it.path))
     // 旧版本没有位置：按顺序均匀排开
@@ -117,6 +142,82 @@ let extensions = loadExtensions()
 /** 悬浮层：{ win, displayId, ready } */
 let overlay = null
 let displayTimer = null
+/** 悬浮层还没准备好时按下的信号快捷键，等它就绪再弹出轮盘 */
+let pendingPing = null
+/** 桌面地毯窗口：{ win, key }，key 是打开它时用的参数，参数变了就重开 */
+let rug = null
+
+/** 拖拽精度 → rug.js 的约束迭代次数和子步数 */
+const RUG_PRECISION = { fine: { iter: 8, sub: 3 }, standard: { iter: 6, sub: 2 }, eco: { iter: 4, sub: 2 } }
+
+function closeRug(reason) {
+  if (!rug) return
+  log('rug-close', { reason })
+  if (!rug.win.isDestroyed()) rug.win.destroy()
+  rug = null
+}
+
+/**
+ * 地毯窗口：普通层级、不置顶，显示后推到最底层。
+ * 这样它在桌面图标之上，而任何应用窗口被点到前面时都会盖住它（Electron 没法像原版那样设到「桌面图标层 + 1」）
+ */
+function syncRug() {
+  if (!state.rug.enabled) return closeRug('disabled')
+  const { display } = resolveDisplay()
+  const p = RUG_PRECISION[state.rug.precision] || RUG_PRECISION.standard
+  const query = new URLSearchParams({
+    material: state.rug.material,
+    quality: state.rug.quality,
+    iter: String(p.iter),
+    sub: String(p.sub),
+    lang: 'zh-Hans',
+    bx: String(display.bounds.x),
+    by: String(display.bounds.y),
+    anchor: state.renderAnchor ? '1' : '0',
+  })
+  // 花样在地毯里切换后只是存下来，不需要重开窗口
+  const key = `${display.id}|${state.rug.quality}|${state.rug.precision}|${state.renderAnchor}`
+  if (rug && !rug.win.isDestroyed() && rug.key === key) return
+  closeRug('reopen')
+  const { bounds } = display
+  log('rug-open', { display: display.id, quality: state.rug.quality, precision: state.rug.precision })
+  const entry = { win: null, key }
+  entry.win = utools.createBrowserWindow(
+    `rug.html?${query}`,
+    {
+      show: false,
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      backgroundColor: '#00000000',
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      enableLargerThanScreen: true,
+      roundedCorners: false,
+      hasShadow: false,
+      acceptFirstMouse: true,
+      webPreferences: { preload: 'rug_preload.js', backgroundThrottling: false },
+    },
+    () => {
+      const { win } = entry
+      win.setIgnoreMouseEvents(true, { forward: true })
+      try {
+        win.setVisibleOnAllWorkspaces(true)
+      } catch {}
+      win.showInactive()
+      // 推到最底层：在桌面图标之上、所有应用窗口之下
+      win.blur()
+    },
+  )
+  rug = entry
+}
 
 function saveState() {
   fs.mkdirSync(dataDir, { recursive: true })
@@ -159,6 +260,8 @@ function snapshot() {
     extErrors: state.extErrors,
     focusOnReveal: state.focusOnReveal,
     renderAnchor: state.renderAnchor,
+    ping: state.ping,
+    rug: state.rug,
     items: viewItems(),
     extensions,
   }
@@ -182,6 +285,7 @@ function pushToOverlay() {
     extensions,
     debug: state.debugHud && utools.isDev(),
     renderAnchor: state.renderAnchor,
+    ping: state.ping,
   })
 }
 
@@ -278,7 +382,9 @@ function startDisplayWatch() {
     if (changed) {
       log('displays-changed', key)
       closeOverlay('displays-changed')
+      closeRug('displays-changed')
       syncOverlay()
+      syncRug()
       emit()
     }
   }, DISPLAY_POLL_MS)
@@ -288,6 +394,7 @@ function update(patch) {
   state = { ...state, ...patch }
   saveState()
   syncOverlay()
+  syncRug()
   emit()
 }
 
@@ -413,6 +520,11 @@ ipcRenderer.on('overlay:ready', () => {
   if (!overlay) return
   overlay.ready = true
   pushToOverlay()
+  // 悬浮层刚打开时按下的信号快捷键
+  if (pendingPing) {
+    ipcSend('overlay:ping-open', pendingPing)
+    pendingPing = null
+  }
   // 刚打开时先滑下来露个面，让用户知道绳子在哪
   ipcSend('overlay:peek')
 })
@@ -477,6 +589,36 @@ ipcRenderer.on('overlay:focus', () => {
   if (overlay && !overlay.win.isDestroyed()) overlay.win.focus()
 })
 
+// 信号截图：静默截取晾衣绳所在屏幕，按 DIP 矩形裁出一块（截图是物理像素，要按实际比例换算）
+ipcRenderer.on('overlay:ping-capture', async (_e, reqId, rect) => {
+  try {
+    const { display } = resolveDisplay()
+    const [shot] = await utools.captureDisplay({ displayId: display.id })
+    const img = shot.image
+    const size = img.getSize()
+    const scale = size.width / display.bounds.width
+    const crop = {
+      x: Math.max(0, Math.round((rect.x - display.bounds.x) * scale)),
+      y: Math.max(0, Math.round((rect.y - display.bounds.y) * scale)),
+      width: Math.round(rect.width * scale),
+      height: Math.round(rect.height * scale),
+    }
+    crop.width = Math.min(crop.width, size.width - crop.x)
+    crop.height = Math.min(crop.height, size.height - crop.y)
+    ipcSend('overlay:ping-captured', reqId, { dataUrl: img.crop(crop).toDataURL(), scale })
+  } catch (err) {
+    log('ping-capture-failed', String(err && err.message))
+    ipcSend('overlay:ping-captured', reqId, { error: String(err && err.message) })
+  }
+})
+
+// 叠好图标的截图：按设置复制和 / 或挂到晾衣绳
+ipcRenderer.on('overlay:ping-result', (_e, dataUrl) => {
+  const output = state.ping.output
+  if (output === 'copy' || output === 'both') utools.copyImage(dataUrl)
+  if (output === 'hang' || output === 'both') hang([imageItem(dataUrl)])
+})
+
 // 挂件报错：同一条连着出现只累加次数；落盘和通知设置页都节流，挂件疯狂报错也不会拖慢插件
 let errorFlush = 0
 ipcRenderer.on('overlay:widget-error', (_e, ext, message, line, fatal) => {
@@ -509,7 +651,27 @@ ipcRenderer.on('overlay:notify', (_e, text) => {
 
 log('preload-start', { enabled: state.enabled, mode: state.mode })
 
-utools.onPluginOut((isKill) => log('plugin-out', { isKill }))
+utools.onPluginOut((isKill) => {
+  log('plugin-out', { isKill })
+  // uTools 被调到前台时地毯窗口可能跟着浮上来，退出插件时推回最底层
+  if (rug && !rug.win.isDestroyed()) rug.win.blur()
+})
+
+ipcRenderer.on('rug:accept', (_e, accept) => {
+  if (rug && !rug.win.isDestroyed()) rug.win.setIgnoreMouseEvents(!accept, { forward: true })
+})
+
+ipcRenderer.on('rug:back', () => {
+  if (rug && !rug.win.isDestroyed()) rug.win.blur()
+})
+
+ipcRenderer.on('rug:material', (_e, id) => {
+  state = { ...state, rug: { ...state.rug, material: String(id) } }
+  saveState()
+  emit()
+})
+
+ipcRenderer.on('rug:hide', () => update({ rug: { ...state.rug, enabled: false } }))
 
 // 守护任务触发：插件刚被拉起来时直接重开悬浮层，不依赖设置页
 utools.onScheduleTrigger(({ code }) => {
@@ -546,8 +708,39 @@ window.services = {
   /** 启动或重新进入插件时调用 */
   start() {
     syncOverlay()
+    syncRug()
     startDisplayWatch()
   },
+  /** 在光标位置弹出信号轮盘 */
+  ping() {
+    if (!state.enabled) update({ enabled: true })
+    const point = utools.getCursorScreenPoint()
+    const { display } = resolveDisplay()
+    const b = display.bounds
+    if (point.x < b.x || point.x >= b.x + b.width || point.y < b.y || point.y >= b.y + b.height) {
+      utools.showNotification('信号只能发在晾衣绳所在的屏幕上，可以在设置里换屏幕')
+      return
+    }
+    if (overlay && overlay.ready && !overlay.win.isDestroyed()) ipcSend('overlay:ping-open', point)
+    else {
+      pendingPing = point
+      syncOverlay()
+    }
+  },
+  setPing: (patch) => update({ ping: { ...state.ping, ...patch } }),
+  setRug(patch) {
+    update({ rug: { ...state.rug, ...patch } })
+    // 换花样不重开窗口，直接让地毯换
+    if (patch.material && rug && !rug.win.isDestroyed()) {
+      void rug.win.webContents.executeJavaScript(`window.rugSetMaterial && window.rugSetMaterial(${JSON.stringify(patch.material)})`)
+    }
+  },
+  /** 地毯放回屏幕中间并摊平 */
+  resetRug() {
+    if (rug && !rug.win.isDestroyed()) void rug.win.webContents.executeJavaScript('window.rugReset && window.rugReset()')
+  },
+  pingHotKey: () => utools.getCmdHotKey('发信号'),
+  setPingHotKey: () => utools.redirectHotKeySetting('发信号'),
   /** 把晾衣绳拉下来一会儿 */
   peek() {
     if (!state.enabled) update({ enabled: true })
