@@ -1,5 +1,12 @@
 // 仅声明本插件用到的 uTools API（依据 uTools 官方开发文档）与 preload 暴露的接口
 
+interface UToolsMatchFile {
+  isFile: boolean
+  isDirectory: boolean
+  name: string
+  path: string
+}
+
 interface UToolsPluginEnterAction {
   code: string
   type: 'text' | 'img' | 'files' | 'regex' | 'over' | 'window'
@@ -10,36 +17,48 @@ interface UToolsPluginEnterAction {
 interface UToolsApi {
   onPluginEnter(cb: (action: UToolsPluginEnterAction) => void): void
   isDarkColors(): boolean
+  isDev(): boolean
   hideMainWindow(isRestorePreWindow?: boolean): boolean
-  dbStorage: {
-    setItem(key: string, value: unknown): void
-    getItem(key: string): unknown
-    removeItem(key: string): boolean
-  }
-}
-
-interface Rect {
-  x: number
-  y: number
-  width: number
-  height: number
+  showNotification(body: string, clickFeatureCode?: string): void
+  screenCapture(): Promise<string>
+  showOpenDialog(options: { title?: string; properties?: string[] }): string[] | undefined
 }
 
 interface Window {
   utools?: UToolsApi
   /** 插件应用主界面 preload（public/preload.js） */
   services?: {
-    showOverlays(settings: import('./settings').Settings): void
-    hideOverlays(): void
-    isOverlayVisible(): boolean
-    onWidgetMoved(listener: (id: string, x: number, y: number) => void): void
+    getState(): import('./line').LineState
+    subscribe(listener: (state: import('./line').LineState) => void): () => void
+    listDisplays(): import('./line').DisplayInfo[]
+    start(): void
+    setEnabled(enabled: boolean): void
+    setMode(mode: import('./line').LineMode): void
+    setDisplay(displayId: number | null): void
+    setClock(clock: boolean): void
+    setMaxItems(maxItems: number): void
+    addImageData(dataUrl: string): void
+    addNote(text: string): void
+    addFiles(paths: string[]): void
+    removeItem(id: string): void
+    clearItems(): void
+    openOverlayDevTools(): void
   }
   /** 悬浮层窗口 preload（public/overlay_preload.js） */
   overlay?: {
-    displayId: number
-    onSettings(listener: (payload: { settings: import('./settings').Settings; bounds: Rect }) => void): void
+    onState(listener: (payload: import('./line').OverlayPayload) => void): void
+    onPeek(listener: () => void): void
     ready(): void
     setInteractive(interactive: boolean): void
-    moveWidget(id: string, x: number, y: number): void
+    remove(id: string): void
+    hideClock(): void
+    watchCursor(listener: (point: { x: number; y: number }) => void): () => void
+    copyImage(filePath: string): boolean
+    copyText(text: string): boolean
+    copyFile(filePath: string): boolean
+    openPath(filePath: string): Promise<string>
+    openExternal(url: string): Promise<void>
+    startDrag(filePath: string): void
+    isDarkColors(): boolean
   }
 }

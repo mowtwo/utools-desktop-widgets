@@ -4,7 +4,7 @@ import './overlay.css'
 import { applyTheme } from '@/lib/theme'
 import Overlay from './Overlay'
 
-applyTheme()
+applyTheme(window.overlay?.isDarkColors())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
