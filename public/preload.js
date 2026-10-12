@@ -184,10 +184,10 @@ function setRugEditing(on) {
     win.showInactive()
     win.moveTop()
   } else {
-    // 回到最底层，完全点击穿透
-    win.setAlwaysOnTop(false)
-    win.setIgnoreMouseEvents(true)
-    win.blur()
+    // 不在原窗口上推回最底层：blur() 在 macOS 上是先隐藏再放到底层，之后点击能到窗口、地毯却不再响应。
+    // 位置存在地毯页面的 localStorage，花样存在设置里，直接重建窗口最可靠，新窗口创建时本来就在最底层
+    closeRug('edit-done')
+    syncRug()
   }
   emit()
 }
@@ -735,6 +735,7 @@ utools.onPluginOut((isKill) => {
 ipcRenderer.on('rug:accept', (_e, accept) => {
   if (!rugEditing || !rug || rug.win.isDestroyed()) return
   rug.win.setIgnoreMouseEvents(!accept, { forward: true })
+  log('rug-accept-applied', accept)
 })
 
 ipcRenderer.on('rug:ready', () => {
@@ -752,6 +753,7 @@ ipcRenderer.on('rug:back', () => {
 })
 
 ipcRenderer.on('rug:material', (_e, id) => {
+  log('rug-material', id)
   state = { ...state, rug: { ...state.rug, material: String(id) } }
   saveState()
   emit()

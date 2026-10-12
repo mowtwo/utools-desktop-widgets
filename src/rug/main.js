@@ -160,6 +160,18 @@ document.addEventListener(
 
 // 不加渲染保活点：全屏的 WebGL 透明窗口每次重绘都要整窗重新合成，周期性地改动会造成闪烁
 
+// 排查「点击到了窗口，地毯却不拖动」：记录按下 / 松开时 rug.js 的状态
+for (const type of ['pointerdown', 'pointerup']) {
+  document.addEventListener(
+    type,
+    (e) => {
+      setTimeout(() => bridge?.log(type, { x: Math.round(e.clientX), y: Math.round(e.clientY), editing, phase: window.rugState?.()?.phase }), 0)
+    },
+    true,
+  )
+}
+
 await import('./vendor/rug.js')
-bridge?.log('rug-ready')
+// eslint-disable-next-line no-undef
+bridge?.log('rug-ready', { build: typeof __BUILD_TIME__ === 'string' ? __BUILD_TIME__ : 'dev' })
 bridge?.ready()

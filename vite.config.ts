@@ -6,6 +6,8 @@ import { defineConfig } from 'vite'
 // uTools 以本地文件方式加载 dist/*.html，资源路径必须是相对路径
 export default defineConfig({
   base: './',
+  // 构建时间写进代码，日志里据此判断测的是哪次构建
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, './src') },
