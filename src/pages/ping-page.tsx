@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Camera, Clock3, Image, Keyboard, Maximize2, Music, Palette, Volume2 } from 'lucide-react'
+import { Camera, CircleDot, Clock3, Image, Keyboard, Maximize2, Music, Palette, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Row } from '@/components/row'
+import { Slider } from '@/components/ui/slider'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -134,18 +135,18 @@ export function PingPage({ ping }: { ping: PingSettings }) {
             </Select>
           </Row>
         )}
-        <Row icon={<Image />} title="图标大小" hint="屏幕上的信号和截图里叠加的图案">
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            value={ping.icon}
-            onValueChange={(v) => v && services.setPing({ icon: v as PingSettings['icon'] })}
-          >
-            <ToggleGroupItem value="sm">小</ToggleGroupItem>
-            <ToggleGroupItem value="md">中</ToggleGroupItem>
-            <ToggleGroupItem value="lg">大</ToggleGroupItem>
-          </ToggleGroup>
+        <Row icon={<Image />} title="图标大小" hint="逻辑像素；原版的 110 是 Windows 100% 缩放下的物理像素，在 Retina 屏上约等于 56">
+          <SliderValue min={24} max={128} step={2} value={ping.size || 56} unit="px" onCommit={(size) => services.setPing({ size })} />
+        </Row>
+        <Row icon={<CircleDot />} title="轮盘大小" hint="按下快捷键后弹出的轮盘">
+          <SliderValue
+            min={50}
+            max={100}
+            step={5}
+            value={Math.round((ping.wheelScale || 0.7) * 100)}
+            unit="%"
+            onCommit={(v) => services.setPing({ wheelScale: v / 100 })}
+          />
         </Row>
         <Row icon={<Volume2 />} title="提示音" hint="默认关闭；开启后预先加载，播放没有延迟">
           <Switch checked={ping.sound} onCheckedChange={(sound) => services.setPing({ sound })} />
@@ -205,5 +206,31 @@ export function PingPage({ ping }: { ping: PingSettings }) {
         </p>
       </section>
     </div>
+  )
+}
+
+/** 滑块：拖动时只更新显示的数值，松手才保存，免得拖一下写几十次设置 */
+function SliderValue(props: { min: number; max: number; step: number; value: number; unit: string; onCommit(v: number): void }) {
+  const [draft, setDraft] = useState<number | null>(null)
+  const shown = draft ?? props.value
+  return (
+    <>
+      <Slider
+        className="w-40"
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        value={[shown]}
+        onValueChange={([v]) => setDraft(v)}
+        onValueCommit={([v]) => {
+          setDraft(null)
+          props.onCommit(v)
+        }}
+      />
+      <span className="w-12 text-right font-mono text-xs text-muted-foreground">
+        {shown}
+        {props.unit}
+      </span>
+    </>
   )
 }

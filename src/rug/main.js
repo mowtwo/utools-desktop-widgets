@@ -1,18 +1,21 @@
 // 桌面地毯窗口的宿主层：替代 desktop-rug 原生（Swift）部分
 // - 垫一个 window.webkit.messageHandlers.rug，让移植来的 rug.js 不用改通信代码
-// - 按 rug.js 报来的地毯轮廓切换点击穿透：鼠标在地毯上才接收，其余点击落到桌面
-// - 按住 Option 时把状态传给 rug.js（缩放、旋转、换花样）
+// - 平时窗口完全点击穿透；只有编辑模式下才按 rug.js 报来的地毯轮廓接收鼠标
+// - 编辑模式在屏幕上方放一条工具栏：调整大小 / 旋转、换花样、摊平、复位、完成
+//   （原版靠按住 Option 进入缩放旋转，悬浮窗口拿不到可靠的按键状态，改成按钮切换）
 
 const bridge = window.rugBridge
 const params = new URLSearchParams(location.search)
 const originX = Number(params.get('bx') || 0)
 const originY = Number(params.get('by') || 0)
+const MATERIALS = ['persian', 'warp', 'grain', 'mesh', 'dots']
 
 let poly = []
 let dragging = false
 let accept = false
-let optionDown = false
-let altKey = false
+let editing = false
+let transform = false
+let material = params.get('material') || 'persian'
 
 window.webkit = {
   messageHandlers: {
@@ -23,10 +26,10 @@ window.webkit = {
             poly = Array.isArray(m.poly) ? m.poly : []
             break
           case 'drag':
-            // 不在每次拖完时把窗口推回最底层：Electron 在 macOS 上是先隐藏再放到底层，会闪一下
             dragging = !!m.active
             break
           case 'material':
+            material = m.id
             bridge?.saveMaterial(m.id)
             break
           case 'quit':
@@ -57,29 +60,76 @@ function setAccept(next) {
   bridge?.setAccept(next)
 }
 
-// 点击穿透时也能收到转发的 mousemove，从里面读 Option 键
-for (const type of ['mousemove', 'mousedown', 'mouseup']) {
-  document.addEventListener(type, (e) => (altKey = e.altKey), true)
-}
-document.addEventListener('keydown', (e) => (altKey = e.altKey), true)
-document.addEventListener('keyup', (e) => (altKey = e.altKey), true)
+// ---------- 编辑工具栏 ----------
 
-// 和原版一样：轮询光标位置，决定接不接收鼠标、要不要进入 Option 状态
+const toolbar = document.createElement('div')
+Object.assign(toolbar.style, {
+  position: 'fixed', top: '56px', left: '50%', transform: 'translateX(-50%)', display: 'none', gap: '4px', padding: '5px',
+  borderRadius: '14px', background: 'rgba(28,28,30,0.88)', boxShadow: '0 8px 28px rgba(0,0,0,0.35)', zIndex: '10',
+  font: '500 13px -apple-system, "PingFang SC", sans-serif', color: '#fff', userSelect: 'none', alignItems: 'center',
+})
+const button = (label, onClick, primary = false) => {
+  const b = document.createElement('button')
+  b.textContent = label
+  Object.assign(b.style, {
+    border: '0', borderRadius: '9px', padding: '6px 12px', font: 'inherit', cursor: 'pointer',
+    background: primary ? '#0a84ff' : 'transparent', color: '#fff',
+  })
+  b.addEventListener('mouseenter', () => { if (!primary && b.dataset.on !== '1') b.style.background = 'rgba(255,255,255,0.12)' })
+  b.addEventListener('mouseleave', () => { if (!primary && b.dataset.on !== '1') b.style.background = 'transparent' })
+  b.addEventListener('click', (e) => {
+    e.stopPropagation()
+    onClick(b)
+  })
+  toolbar.appendChild(b)
+  return b
+}
+const hint = document.createElement('span')
+hint.textContent = '编辑地毯：拖动摆放，拉边角掀开或对折'
+Object.assign(hint.style, { padding: '0 10px 0 6px', color: 'rgba(255,255,255,0.65)', fontSize: '12px' })
+toolbar.appendChild(hint)
+const setTransform = (on, b) => {
+  transform = on
+  window.rugSetOption?.(on)
+  b.dataset.on = on ? '1' : '0'
+  b.style.background = on ? 'rgba(255,255,255,0.22)' : 'transparent'
+}
+const transformBtn = button('调整大小 / 旋转', (b) => setTransform(!transform, b))
+button('换花样', () => {
+  const next = MATERIALS[(MATERIALS.indexOf(material) + 1) % MATERIALS.length]
+  window.rugSetMaterial?.(next)
+})
+button('摊平', () => window.rugFlatten?.())
+button('复位', () => window.rugReset?.())
+button('完成', () => bridge?.endEdit(), true)
+document.body.appendChild(toolbar)
+
+function overToolbar(x, y) {
+  if (toolbar.style.display === 'none') return false
+  const r = toolbar.getBoundingClientRect()
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+}
+
+bridge?.onEdit((on) => {
+  editing = on
+  toolbar.style.display = on ? 'flex' : 'none'
+  if (!on) {
+    if (transform) setTransform(false, transformBtn)
+    accept = false
+  }
+})
+
+// 编辑模式下轮询光标：在地毯或工具栏上就接收鼠标，其余点击穿透
 setInterval(() => {
-  if (!bridge) return
+  if (!bridge || !editing) return
   const p = bridge.cursor()
   const x = p.x - originX
   const y = p.y - originY
-  const hit = inPolygon(x, y)
-  const want = altKey && (optionDown || dragging || hit)
-  if (want !== optionDown) {
-    optionDown = want
-    window.rugSetOption?.(want)
-  }
-  setAccept(dragging || hit)
+  setAccept(dragging || inPolygon(x, y) || overToolbar(x, y))
 }, 33)
 
 // 不加渲染保活点：全屏的 WebGL 透明窗口每次重绘都要整窗重新合成，周期性地改动会造成闪烁
 
 await import('./vendor/rug.js')
 bridge?.log('rug-ready')
+bridge?.ready()

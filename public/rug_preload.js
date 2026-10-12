@@ -13,8 +13,20 @@ function log(event, detail) {
 
 window.addEventListener('error', (e) => log('error', { message: e.message, line: e.lineno }))
 
+const { ipcRenderer } = require('electron')
+
 window.rugBridge = {
   log,
+  /** 页面准备好了：主界面据此把窗口显示出来（创建回调可能丢失） */
+  ready() {
+    utools.sendToParent('rug:ready')
+  },
+  onEdit(listener) {
+    ipcRenderer.on('rug:edit', (_e, on) => listener(on))
+  },
+  endEdit() {
+    utools.sendToParent('rug:end-edit')
+  },
   cursor: () => utools.getCursorScreenPoint(),
   setAccept(accept) {
     utools.sendToParent('rug:accept', accept)

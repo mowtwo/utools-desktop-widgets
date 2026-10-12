@@ -1,4 +1,4 @@
-import { Cpu, Gauge, Palette, RotateCcw, Shirt } from 'lucide-react'
+import { Cpu, Gauge, Move, Palette, RotateCcw, Shirt } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Row } from '@/components/row'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -15,7 +15,7 @@ const MATERIALS = [
   { id: 'dots', label: '圆点' },
 ]
 
-export function RugPage({ rug }: { rug: RugSettings }) {
+export function RugPage({ rug, editing }: { rug: RugSettings; editing: boolean }) {
   const services = window.services!
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 p-5">
@@ -23,7 +23,16 @@ export function RugPage({ rug }: { rug: RugSettings }) {
         <Row icon={<Shirt />} title="桌面地毯" hint="铺在桌面图标上、应用窗口下面，乱糟糟的图标往下一藏；文件不会被移动">
           <Switch checked={rug.enabled} onCheckedChange={(enabled) => services.setRug({ enabled })} />
         </Row>
-        <Row icon={<Palette />} title="花样" hint="也可以按住 ⌥ Option 点地毯下方的「花样」切换">
+        <Row
+          icon={<Move />}
+          title="摆放地毯"
+          hint="平时地毯不接收鼠标，点击都落到桌面；进入编辑模式后才能拖动、缩放、旋转"
+        >
+          <Button size="sm" disabled={!rug.enabled || editing} onClick={services.editRug}>
+            {editing ? '编辑中…' : '编辑地毯'}
+          </Button>
+        </Row>
+        <Row icon={<Palette />} title="花样" hint="编辑模式的工具栏里也能切换">
           <Select value={rug.material} onValueChange={(material) => services.setRug({ material })}>
             <SelectTrigger className="w-32">
               <SelectValue />
@@ -72,8 +81,8 @@ export function RugPage({ rug }: { rug: RugSettings }) {
 
       <section className="rounded-xl border bg-card p-4 text-xs leading-relaxed text-muted-foreground">
         <div className="mb-1 text-sm font-medium text-foreground">怎么用</div>
-        拖动地毯盖住图标；抓住边或角往上拖可以掀开；把一个角拉过去可以对折；抓住中间往一边拉可以叠起；双击摊平；按住 ⌥
-        Option 拖角可以缩放和旋转。地毯以外的地方，点击直接落到桌面上。
+        点「编辑地毯」（也可以用 uTools 指令「编辑地毯」），地毯会浮到最上层，屏幕上方出现工具栏：拖动地毯盖住图标；抓住边或角往上拖可以掀开；把一个角拉过去可以对折；点「调整大小
+        / 旋转」后拖角可以缩放和旋转。点「完成」保存位置，地毯回到桌面图标上、所有窗口下面，平时点击都直接落到桌面。
         <div className="mt-2">
           移植自 desktop-rug（MIT，Joseph Zhou），地毯的创意和视觉设计来自 Terkel；使用了 three.js（MIT）和 Paper
           Shaders（Apache-2.0）。

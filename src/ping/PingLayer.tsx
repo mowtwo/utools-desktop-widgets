@@ -6,7 +6,7 @@ import { spawnPing } from './lol/fx'
 import { ALL_PINGS, DEFAULT_LOL_WHEEL, pingById, soundUrl as lolSoundUrl, textureUrl, TICK_SOUND, type PingDef } from './lol/pings'
 import { SoundBank } from './lol/soundBank'
 import { Wheel } from './lol/wheel'
-import { DEFAULT_WHEEL, ICON_SIZES, SIGNALS, signalById, SignalBadge, SOUND_PACKS, type Signal } from './signals'
+import { DEFAULT_WHEEL, SIGNALS, signalById, SignalBadge, SOUND_PACKS, type Signal } from './signals'
 import './lol/lol.css'
 
 /** 开源风格轮盘的半径、中心取消区半径（px） */
@@ -14,8 +14,6 @@ const RADIUS = 82
 const DEAD_ZONE = 26
 /** 轮盘打开后多久没操作自动关闭（ms） */
 const WHEEL_TIMEOUT = 8000
-/** 原版风格的信号尺寸（与 lolPing 的 --size 对应） */
-const LOL_SIZES = { sm: 80, md: 110, lg: 140 } as const
 
 interface Props {
   settings: PingSettings
@@ -157,6 +155,10 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
   }, [lol])
 
   useEffect(() => {
+    lolWheel.current?.setScale(settings.wheelScale || 0.7)
+  }, [settings.wheelScale, lol])
+
+  useEffect(() => {
     const ids = settings.lolWheel.length === 8 ? settings.lolWheel : DEFAULT_LOL_WHEEL
     lolWheel.current?.setItems(ids.map((id) => ({ key: id, icon: textureUrl(pingById(id).icon) })))
   }, [settings.lolWheel, lol])
@@ -186,6 +188,7 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
     lolWheel.current?.cancel()
   }
 
+  const wheelScale = settings.wheelScale || 0.7
   const openIds = settings.wheel.length === 8 ? settings.wheel : DEFAULT_WHEEL
   const openSlots = openIds.map(signalById)
 
@@ -194,7 +197,7 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
     if (lol || !wheelAt || !pointer) return null
     const dx = pointer.x - wheelAt.x
     const dy = pointer.y - wheelAt.y
-    if (Math.hypot(dx, dy) < DEAD_ZONE) return null
+    if (Math.hypot(dx, dy) < DEAD_ZONE * wheelScale) return null
     const angle = (Math.atan2(dx, -dy) * 180) / Math.PI
     return Math.round(((angle + 360) % 360) / 45) % 8
   })()
@@ -219,7 +222,7 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
 
   const fireLol = (id: string, at: { x: number; y: number }) => {
     const def = pingById(id)
-    const size = LOL_SIZES[settingsRef.current.icon]
+    const size = settingsRef.current.size || 56
     void fire(
       at,
       () => {
@@ -239,7 +242,7 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
         play(signal.id)
         setTimeout(() => setOpenPings((list) => list.filter((p) => p.key !== key)), settingsRef.current.duration)
       },
-      openDrawer(signal, ICON_SIZES[settingsRef.current.icon]),
+      openDrawer(signal, settingsRef.current.size || 56),
     )
   }
 
@@ -275,7 +278,10 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
       {lol && <svg ref={svgRef} id="ping-wheel" className="wheel" viewBox="-300 -300 600 600" />}
 
       {!lol && wheelAt && (
-        <div className="pointer-events-none absolute animate-in fade-in zoom-in-75 duration-150" style={{ left: wheelAt.x, top: wheelAt.y }}>
+        <div
+          className="pointer-events-none absolute animate-in fade-in zoom-in-75 duration-150"
+          style={{ left: wheelAt.x, top: wheelAt.y, scale: wheelScale }}
+        >
           <div
             className="absolute -translate-1/2 rounded-full bg-black/45 shadow-2xl backdrop-blur-sm"
             style={{ width: RADIUS * 2 + 56, height: RADIUS * 2 + 56 }}
@@ -308,7 +314,7 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
       {/* 原版风格的信号由 lolPing 的 spawnPing 画在这一层 */}
       <div ref={layerRef} className="pointer-events-none fixed inset-0" />
       {openPings.map((p) => (
-        <OpenPingMark key={p.key} ping={p} size={ICON_SIZES[settings.icon]} duration={settings.duration} />
+        <OpenPingMark key={p.key} ping={p} size={settings.size || 56} duration={settings.duration} />
       ))}
     </div>
   )

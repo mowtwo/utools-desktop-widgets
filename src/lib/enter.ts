@@ -27,6 +27,10 @@ export async function handlePluginEnter(action: UToolsPluginEnterAction) {
       }
       return
     }
+    case 'rug-edit': {
+      services.editRug()
+      return
+    }
     case 'ping': {
       window.utools?.hideMainWindow()
       services.ping()

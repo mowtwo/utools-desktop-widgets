@@ -40,8 +40,6 @@ export const CAPTURE_SIZES = [
   { w: 800, h: 500 },
 ]
 
-export const ICON_SIZES = { sm: 40, md: 56, lg: 76 } as const
-export type IconSize = keyof typeof ICON_SIZES
 
 /** 信号在屏幕上停留的时长（ms） */
 export const DURATIONS = [

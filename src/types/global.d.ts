@@ -67,6 +67,7 @@ interface Window {
     setPingHotKey(): void
     setRug(patch: Partial<import('./line').RugSettings>): void
     resetRug(): void
+    editRug(): void
     seedExtensions(builtins: import('@/widget/protocol').WidgetExtension[]): void
     saveExtension(ext: Omit<import('@/widget/protocol').WidgetExtension, 'id'> & { id?: string }): string
     removeExtension(id: string): void

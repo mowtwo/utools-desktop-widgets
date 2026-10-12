@@ -116,7 +116,7 @@ export default function App() {
         <PingPage ping={line.ping} />
       </TabsContent>
       <TabsContent value="rug" className="min-h-0 flex-1 overflow-auto">
-        <RugPage rug={line.rug} />
+        <RugPage rug={line.rug} editing={line.rugEditing} />
       </TabsContent>
       <TabsContent value="extensions" className="min-h-0 flex-1 p-4">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">加载编辑器…</div>}>

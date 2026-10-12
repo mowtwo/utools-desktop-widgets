@@ -1,5 +1,5 @@
 // 移植自 lolPing（https://github.com/darrenprx/lolPing，MIT，Copyright (c) 2026 Danrui Meng），见 NOTICE。
-// 改动：import 路径；中心下方的「BACK」改成「取消」；构造函数参数属性改成显式字段（本项目的 TS 配置不允许前者）。
+// 改动：import 路径；中心下方的「BACK」改成「取消」；构造函数参数属性改成显式字段（本项目的 TS 配置不允许前者）；新增 setScale 缩放轮盘。
 
 import { WHEEL, pickSlice } from './geometry';
 import { WHEEL_SLOTS } from './pings';
@@ -41,6 +41,8 @@ export class Wheel {
   private ox = 0;
   private oy = 0;
   private opened = false;
+  /** 轮盘缩放比例：视觉上用 CSS 缩放，判断扇区时把偏移量换算回原尺寸 */
+  private scale = 1;
 
   private readonly svg: SVGSVGElement;
   private readonly centerLabel: string;
@@ -65,6 +67,11 @@ export class Wheel {
     });
   }
 
+  setScale(scale: number): void {
+    this.scale = scale;
+    this.svg.style.setProperty('--s', String(scale));
+  }
+
   get isOpen(): boolean {
     return this.opened;
   }
@@ -80,13 +87,13 @@ export class Wheel {
   }
 
   move(x: number, y: number): void {
-    if (this.opened) this.setHot(pickSlice(x - this.ox, y - this.oy));
+    if (this.opened) this.setHot(pickSlice((x - this.ox) / this.scale, (y - this.oy) / this.scale));
   }
 
   /** Closes the wheel. Returns the chosen item's key at the wheel centre, or null when released in the dead zone. */
   release(x: number, y: number): { key: string; x: number; y: number } | null {
     if (!this.opened) return null;
-    const slice = pickSlice(x - this.ox, y - this.oy);
+    const slice = pickSlice((x - this.ox) / this.scale, (y - this.oy) / this.scale);
     this.close();
     const item = slice >= 0 ? this.items[slice] : undefined;
     return item ? { key: item.key, x: this.ox, y: this.oy } : null;

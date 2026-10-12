@@ -83,7 +83,10 @@ export interface PingSettings {
   /** 截图尺寸（DIP） */
   width: number
   height: number
-  icon: 'sm' | 'md' | 'lg'
+  /** 信号图标大小（逻辑像素） */
+  size: number
+  /** 轮盘缩放比例 0.5 ~ 1 */
+  wheelScale: number
   output: 'none' | 'copy' | 'hang' | 'both'
   sound: boolean
 }
@@ -116,6 +119,8 @@ export interface LineState {
   renderAnchor: boolean
   ping: PingSettings
   rug: RugSettings
+  /** 地毯正在编辑 */
+  rugEditing: boolean
   items: LineItem[]
   extensions: WidgetExtension[]
 }

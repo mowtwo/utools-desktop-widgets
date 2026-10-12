@@ -1,10 +1,10 @@
-/* 移植自 lolPing 的 overlay.css（MIT，Copyright (c) 2026 Danrui Meng）：只保留轮盘和信号部分，限定在 .lol 容器里，动画名加 lol- 前缀 */
+/* 移植自 lolPing 的 overlay.css（MIT，Copyright (c) 2026 Danrui Meng）：只保留轮盘和信号部分，限定在 .lol 容器里，动画名加 lol- 前缀；轮盘缩放用 --s 变量 */
 /* ---------- wheel ---------- */
 .lol .wheel {
   position: absolute; left: 0; top: 0; width: 600px; height: 600px; margin: -300px 0 0 -300px;
-  pointer-events: none; opacity: 0; transform: scale(.85); transition: opacity .12s ease-out, transform .12s ease-out;
+  pointer-events: none; opacity: 0; transform: scale(calc(var(--s, 1) * .85)); transition: opacity .12s ease-out, transform .12s ease-out;
 }
-.lol .wheel.open { opacity: 1; transform: scale(1); }
+.lol .wheel.open { opacity: 1; transform: scale(var(--s, 1)); }
 .lol .wheel .wedge { transition: fill-opacity .08s; }
 .lol .wheel .icon {
   transition: filter .1s, transform .1s; transform-box: fill-box; transform-origin: center;

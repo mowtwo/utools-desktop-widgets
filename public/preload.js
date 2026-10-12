@@ -63,7 +63,10 @@ const defaultState = {
     soundPack: 'digital',
     width: 480,
     height: 300,
-    icon: 'md',
+    /** 信号图标大小（逻辑像素）。原版 110 是按 Windows 100% 缩放设计的物理像素，在 2 倍屏上约等于 56 */
+    size: 56,
+    /** 轮盘缩放比例 */
+    wheelScale: 0.7,
     /** none 不截图 / copy 复制 / hang 挂到晾衣绳 / both 复制并挂上 */
     output: 'copy',
     /** 提示音默认关，免得吵 */
@@ -153,13 +156,44 @@ let overlay = null
 let displayTimer = null
 /** 悬浮层还没准备好时按下的信号快捷键，等它就绪再弹出轮盘 */
 let pendingPing = null
-/** 桌面地毯窗口：{ win, key }，key 是打开它时用的参数，参数变了就重开 */
+/** 桌面地毯窗口：{ win, key, shown }，key 是打开它时用的参数，参数变了就重开 */
 let rug = null
+/** 晾衣绳窗口还没显示出来，地毯等它显示后再建 */
+let rugWaiting = false
+/** 地毯编辑模式：浮到最上层、可以拖动缩放；平时完全点击穿透 */
+let rugEditing = false
 
 /** 拖拽精度 → rug.js 的约束迭代次数和子步数 */
 const RUG_PRECISION = { fine: { iter: 8, sub: 3 }, standard: { iter: 6, sub: 2 }, eco: { iter: 4, sub: 2 } }
 
+/** 进入 / 退出地毯编辑模式 */
+function setRugEditing(on) {
+  if (on && (!state.rug.enabled || !rug || rug.win.isDestroyed())) {
+    utools.showNotification('先在设置里打开桌面地毯')
+    return
+  }
+  rugEditing = on
+  log('rug-edit', { on })
+  if (!rug || rug.win.isDestroyed()) return emit()
+  const { win } = rug
+  win.webContents.send('rug:edit', on)
+  if (on) {
+    // 浮到最上层，地毯上的点击由页面按地毯轮廓决定接不接收
+    win.setAlwaysOnTop(true)
+    win.setIgnoreMouseEvents(true, { forward: true })
+    win.showInactive()
+    win.moveTop()
+  } else {
+    // 回到最底层，完全点击穿透
+    win.setAlwaysOnTop(false)
+    win.setIgnoreMouseEvents(true)
+    win.blur()
+  }
+  emit()
+}
+
 function closeRug(reason) {
+  rugEditing = false
   if (!rug) return
   log('rug-close', { reason })
   if (!rug.win.isDestroyed()) rug.win.destroy()
@@ -172,6 +206,11 @@ function closeRug(reason) {
  */
 function syncRug() {
   if (!state.rug.enabled) return closeRug('disabled')
+  // 晾衣绳窗口还没显示：等它显示后再建，免得两个窗口同时创建
+  if (state.enabled && (!overlay || !overlay.shown)) {
+    rugWaiting = true
+    return
+  }
   const { display } = resolveDisplay()
   const p = RUG_PRECISION[state.rug.precision] || RUG_PRECISION.standard
   const query = new URLSearchParams({
@@ -189,7 +228,7 @@ function syncRug() {
   closeRug('reopen')
   const { bounds } = display
   log('rug-open', { display: display.id, quality: state.rug.quality, precision: state.rug.precision })
-  const entry = { win: null, key }
+  const entry = { win: null, key, shown: false }
   entry.win = utools.createBrowserWindow(
     `rug.html?${query}`,
     {
@@ -213,18 +252,25 @@ function syncRug() {
       acceptFirstMouse: true,
       webPreferences: { preload: 'rug_preload.js', backgroundThrottling: false },
     },
-    () => {
-      const { win } = entry
-      win.setIgnoreMouseEvents(true, { forward: true })
-      try {
-        win.setVisibleOnAllWorkspaces(true)
-      } catch {}
-      win.showInactive()
-      // 推到最底层：在桌面图标之上、所有应用窗口之下
-      win.blur()
-    },
+    () => presentRug(entry, 'callback'),
   )
   rug = entry
+}
+
+/** 把地毯显示出来（同 presentOverlay：创建回调和页面报到谁先到谁执行） */
+function presentRug(entry, via) {
+  if (entry.shown || entry.win.isDestroyed()) return
+  entry.shown = true
+  const { win } = entry
+  log('rug-shown', { via })
+  // 平时完全点击穿透：地毯只在编辑模式下接收鼠标
+  win.setIgnoreMouseEvents(true)
+  try {
+    win.setVisibleOnAllWorkspaces(true)
+  } catch {}
+  win.showInactive()
+  // 推到最底层：在桌面图标之上、所有应用窗口之下
+  win.blur()
 }
 
 function saveState() {
@@ -270,6 +316,7 @@ function snapshot() {
     renderAnchor: state.renderAnchor,
     ping: state.ping,
     rug: state.rug,
+    rugEditing,
     items: viewItems(),
     extensions,
   }
@@ -314,7 +361,7 @@ function openOverlay(display) {
   const { bounds } = display
   // Windows 下使用 fullscreen 避免窗口尺寸限制（见官方文档「全屏透明置顶窗口」）
   const fullscreenable = utools.isWindows()
-  const entry = { win: null, displayId: display.id, ready: false }
+  const entry = { win: null, displayId: display.id, ready: false, shown: false }
   entry.win = utools.createBrowserWindow(
     'overlay.html',
     {
@@ -342,24 +389,38 @@ function openOverlay(display) {
       // 官方文档「全屏透明置顶窗口 / 性能注意」：透明窗口可能被降低渲染优先级，backgroundThrottling 能缓解一部分
       webPreferences: { preload: 'overlay_preload.js', backgroundThrottling: false },
     },
-    () => {
-      const { win } = entry
-      // 默认整窗点击穿透；forward 让悬浮层仍收到 mousemove，用来判断鼠标是否在挂件上
-      win.setIgnoreMouseEvents(true, { forward: true })
-      // 只用默认置顶层级，不用 screen-saver，免得盖住同样置顶的 uTools 搜索框
-      win.setAlwaysOnTop(true)
-      try {
-        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-      } catch {}
-      // 悬浮层不在前台、内容又几乎全透明，容易被节流，导致光标轮询和绳子动画停掉
-      try {
-        win.webContents.setBackgroundThrottling(false)
-      } catch {}
-      // 不抢走用户当前窗口的焦点
-      win.showInactive()
-    },
+    () => presentOverlay(entry, 'callback'),
   )
   overlay = entry
+}
+
+/**
+ * 把悬浮层显示出来。创建回调和页面报到（overlay:ready）谁先到谁执行，只执行一次：
+ * 两个自定义窗口几乎同时创建时，先建的那个的回调可能不会被调用，窗口就一直停在隐藏状态
+ */
+function presentOverlay(entry, via) {
+  if (entry.shown || entry.win.isDestroyed()) return
+  entry.shown = true
+  const { win } = entry
+  log('overlay-shown', { via })
+  // 默认整窗点击穿透；forward 让悬浮层仍收到 mousemove，用来判断鼠标是否在挂件上
+  win.setIgnoreMouseEvents(true, { forward: true })
+  // 只用默认置顶层级，不用 screen-saver，免得盖住同样置顶的 uTools 搜索框
+  win.setAlwaysOnTop(true)
+  try {
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  } catch {}
+  // 悬浮层不在前台、内容又几乎全透明，容易被节流，导致光标轮询和绳子动画停掉
+  try {
+    win.webContents.setBackgroundThrottling(false)
+  } catch {}
+  // 不抢走用户当前窗口的焦点
+  win.showInactive()
+  // 等晾衣绳显示出来再建地毯窗口，两个窗口不要同时创建
+  if (rugWaiting) {
+    rugWaiting = false
+    syncRug()
+  }
 }
 
 /** 让悬浮层与当前状态、屏幕布局一致 */
@@ -527,6 +588,7 @@ ipcRenderer.on('overlay:ready', () => {
   log('overlay-ready')
   if (!overlay) return
   overlay.ready = true
+  presentOverlay(overlay, 'ready')
   pushToOverlay()
   // 悬浮层刚打开时按下的信号快捷键
   if (pendingPing) {
@@ -665,13 +727,21 @@ log('preload-start', { enabled: state.enabled, mode: state.mode })
 
 utools.onPluginOut((isKill) => {
   log('plugin-out', { isKill })
-  // uTools 被调到前台时地毯窗口可能跟着浮上来，退出插件时推回最底层
-  if (rug && !rug.win.isDestroyed()) rug.win.blur()
+  // uTools 被调到前台时地毯窗口可能跟着浮上来，退出插件时推回最底层（编辑中除外）
+  if (rug && !rug.win.isDestroyed() && !rugEditing) rug.win.blur()
 })
 
+// 只有编辑模式下才接收鼠标
 ipcRenderer.on('rug:accept', (_e, accept) => {
-  if (rug && !rug.win.isDestroyed()) rug.win.setIgnoreMouseEvents(!accept, { forward: true })
+  if (!rugEditing || !rug || rug.win.isDestroyed()) return
+  rug.win.setIgnoreMouseEvents(!accept, { forward: true })
 })
+
+ipcRenderer.on('rug:ready', () => {
+  if (rug) presentRug(rug, 'ready')
+})
+
+ipcRenderer.on('rug:end-edit', () => setRugEditing(false))
 
 ipcRenderer.on('rug:back', () => {
   if (rug && !rug.win.isDestroyed()) rug.win.blur()
@@ -747,6 +817,11 @@ window.services = {
     if (patch.material && rug && !rug.win.isDestroyed()) {
       void rug.win.webContents.executeJavaScript(`window.rugSetMaterial && window.rugSetMaterial(${JSON.stringify(patch.material)})`)
     }
+  },
+  /** 进入地毯编辑模式：收起 uTools 面板，地毯浮到最上层，屏幕上方出现编辑工具栏 */
+  editRug() {
+    utools.hideMainWindow()
+    setRugEditing(true)
   },
   /** 地毯放回屏幕中间并摊平 */
   resetRug() {

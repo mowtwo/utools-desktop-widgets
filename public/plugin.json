@@ -27,6 +27,14 @@
       "mainHide": true
     },
     {
+      "code": "rug-edit",
+      "description": "拖动、缩放、旋转桌面地毯，完成后回到桌面图标上",
+      "cmds": [
+        "编辑地毯"
+      ],
+      "mainHide": true
+    },
+    {
       "code": "toggle",
       "description": "显示或隐藏晾衣绳",
       "cmds": [
