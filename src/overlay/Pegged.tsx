@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Check, Puzzle, X } from 'lucide-react'
 import type { LineItem } from '@/types/line'
-import type { WidgetExtension } from '@/widget/runtime'
+import type { HandleContent, LineOp, WidgetExtension } from '@/widget/runtime'
 import { WidgetFrame, type WidgetHost } from '@/widget/WidgetFrame'
 import { cn } from '@/lib/utils'
 import { EmptyClip } from './EmptyClip'
@@ -29,6 +29,11 @@ interface Props {
   kick(id: string, amount: number): void
   /** 开始把文件拖到别的应用：拖拽结束前由外层按光标位置决定是否点击穿透 */
   onDragOut(): void
+  /** 别的挂件在专注模式：自己藏起来 */
+  dimmed: boolean
+  /** 挂件调用 api.line.* / api.handle.* */
+  onWidgetLine(id: string, op: LineOp, value?: boolean): void
+  onWidgetHandle(id: string, value: HandleContent | null): void
 }
 
 function Photo({ src }: { src: string }) {
@@ -91,7 +96,17 @@ function open(item: LineItem) {
 }
 
 /** 挂件扩展的一个实例：在沙箱里跑，api 的请求在这里转给悬浮层 preload */
-function WidgetCard({ id, extension, data, themeKey }: { id: string; extension?: WidgetExtension; data?: Record<string, unknown>; themeKey: unknown }) {
+interface WidgetCardProps {
+  id: string
+  extId: string
+  extension?: WidgetExtension
+  data?: Record<string, unknown>
+  themeKey: unknown
+  onLine(id: string, op: LineOp, value?: boolean): void
+  onHandle(id: string, value: HandleContent | null): void
+}
+
+function WidgetCard({ id, extId, extension, data, themeKey, onLine, onHandle }: WidgetCardProps) {
   const [error, setError] = useState<string | null>(null)
   const host = useMemo<WidgetHost>(() => {
     const o = window.overlay!
@@ -100,9 +115,15 @@ function WidgetCard({ id, extension, data, themeKey }: { id: string; extension?:
       open: (url) => void o.openExternal(url),
       notify: (text) => o.notify(text),
       saveData: (d) => o.saveWidgetData(id, d),
-      onError: (message, line) => setError(line ? `第 ${line} 行：${message}` : message),
+      line: (op, value) => onLine(id, op, value),
+      handle: (value) => onHandle(id, value),
+      onError: (message, line, fatal) => {
+        setError(line ? `第 ${line} 行：${message}` : message)
+        // 报错记到设置页对应扩展下，悬浮层只亮一个红点
+        o.reportWidgetError(extId, message, line, fatal)
+      },
     }
-  }, [id])
+  }, [id, extId, onLine, onHandle])
 
   if (!extension) {
     return (
@@ -127,7 +148,19 @@ function WidgetCard({ id, extension, data, themeKey }: { id: string; extension?:
 }
 
 /** 夹在绳子上的一件东西：拖夹子换位置；单击复制，双击打开，拖卡片发到别的应用 */
-export function Pegged({ item, extension, extensions, themeKey, bind, onPinDown, kick, onDragOut }: Props) {
+export function Pegged({
+  item,
+  extension,
+  extensions,
+  themeKey,
+  bind,
+  onPinDown,
+  kick,
+  onDragOut,
+  dimmed,
+  onWidgetLine,
+  onWidgetHandle,
+}: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
@@ -182,6 +215,11 @@ export function Pegged({ item, extension, extensions, themeKey, bind, onPinDown,
       className="pointer-events-none absolute top-0 left-0 [&_[data-hit]]:pointer-events-auto"
       style={{ width: CARD_WIDTH, transformOrigin: `${CARD_WIDTH / 2}px 0` }}
     >
+      {/* 专注模式下藏起来：visibility 也会让里面的东西接不到鼠标 */}
+      <div
+        className="transition-[opacity,visibility] duration-300"
+        style={{ opacity: dimmed ? 0 : 1, visibility: dimmed ? 'hidden' : 'visible' }}
+      >
       {/* 夹子是拖动手柄，热区比夹子本身大一圈 */}
       <div
         data-hit
@@ -199,7 +237,15 @@ export function Pegged({ item, extension, extensions, themeKey, bind, onPinDown,
         ) : (
           <div className="group relative -mt-3.5 flex justify-center">
             {item.type === 'widget' ? (
-              <WidgetCard id={item.id} extension={extension} data={item.data} themeKey={themeKey} />
+              <WidgetCard
+                id={item.id}
+                extId={item.ext}
+                extension={extension}
+                data={item.data}
+                themeKey={themeKey}
+                onLine={onWidgetLine}
+                onHandle={onWidgetHandle}
+              />
             ) : item.type === 'todo' ? (
               <TodoCard item={item} onDone={fallAndRemove} />
             ) : isFolder ? (
@@ -255,6 +301,7 @@ export function Pegged({ item, extension, extensions, themeKey, bind, onPinDown,
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   )

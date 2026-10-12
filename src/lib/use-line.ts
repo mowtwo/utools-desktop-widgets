@@ -13,6 +13,7 @@ const fallback: LineState = {
   hideDelay: 800,
   seeded: false,
   debugHud: false,
+  extErrors: {},
   items: [],
   extensions: [],
 }

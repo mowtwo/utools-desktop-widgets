@@ -5,7 +5,7 @@ import { Compartment, EditorState } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { EditorView } from '@codemirror/view'
 import { basicSetup } from 'codemirror'
-import { API_DOCS } from '@/widget/builtins'
+import { API_MEMBERS } from '@/widget/builtins'
 import { cn } from '@/lib/utils'
 
 /** 输入 api. 时补全挂件 API */
@@ -14,7 +14,7 @@ function apiCompletions(context: CompletionContext) {
   if (!word || (word.from === word.to && !context.explicit)) return null
   return {
     from: word.from + 4,
-    options: API_DOCS.map((d) => ({ label: d.name, detail: d.signature, info: d.doc, type: 'function' })),
+    options: API_MEMBERS.map((d) => ({ label: d.name, detail: d.signature, info: d.doc, type: 'function' })),
   }
 }
 

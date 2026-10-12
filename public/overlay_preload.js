@@ -8,9 +8,24 @@ const { pathToFileURL } = require('node:url')
 const { ipcRenderer, webUtils } = require('electron')
 
 const CURSOR_POLL_MS = 60
+const logFile = path.join(utools.getPluginLocalDataPath(), 'debug.log')
+
+/** 悬浮层自己写日志：主界面被结束时也能留下记录 */
+function log(event, detail) {
+  try {
+    const line = `${new Date().toISOString()} overlay ${event}${detail === undefined ? '' : ' ' + JSON.stringify(detail)}\n`
+    fs.appendFileSync(logFile, line)
+  } catch {}
+}
+
+window.addEventListener('error', (e) => log('error', { message: e.message, line: e.lineno }))
+window.addEventListener('unhandledrejection', (e) => log('rejection', { reason: String(e.reason) }))
+document.addEventListener('visibilitychange', () => log('visibility', document.visibilityState))
+log('start', { visibility: document.visibilityState })
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'svg']
 
 window.overlay = {
+  log,
   onState(listener) {
     ipcRenderer.on('overlay:state', (_e, payload) => listener(payload))
   },
@@ -115,6 +130,10 @@ window.overlay = {
   },
   notify(text) {
     utools.sendToParent('overlay:notify', text)
+  },
+  /** 挂件运行报错，记到设置页对应扩展下 */
+  reportWidgetError(ext, message, line, fatal) {
+    utools.sendToParent('overlay:widget-error', ext, message, line, fatal)
   },
   copyImage: (filePath) => utools.copyImage(filePath),
   copyText: (text) => utools.copyText(text),

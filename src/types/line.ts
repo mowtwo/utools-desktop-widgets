@@ -82,6 +82,8 @@ export interface LineState {
   seeded: boolean
   /** 诊断面板开关（只在开发模式下生效） */
   debugHud: boolean
+  /** 每个扩展在悬浮层里的运行报错 */
+  extErrors: Record<string, ExtError[]>
   items: LineItem[]
   extensions: WidgetExtension[]
 }
@@ -113,6 +115,16 @@ export interface OverlayPayload {
   extensions: WidgetExtension[]
   /** 开发模式下显示诊断面板 */
   debug: boolean
+}
+
+export interface ExtError {
+  time: number
+  message: string
+  line?: number
+  /** 挂件被停止（死循环、无法启动） */
+  fatal: boolean
+  /** 连续出现的次数 */
+  count: number
 }
 
 /** 文件夹衣架展开后的一项 */

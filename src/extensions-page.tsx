@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CodeEditor } from '@/components/code-editor'
 import { API_DOCS, CSS_HELPERS, TEMPLATE } from '@/widget/builtins'
+import type { ExtError } from '@/types/line'
 import type { WidgetExtension } from '@/widget/runtime'
 import { WidgetFrame, type WidgetHost } from '@/widget/WidgetFrame'
 import { cn } from '@/lib/utils'
@@ -22,7 +23,14 @@ function useDebounced<T>(value: T, ms: number) {
   return v
 }
 
-export function ExtensionsPage({ extensions, dark }: { extensions: WidgetExtension[]; dark: boolean }) {
+interface PageProps {
+  extensions: WidgetExtension[]
+  /** 每个扩展在悬浮层里的运行报错 */
+  extErrors: Record<string, ExtError[]>
+  dark: boolean
+}
+
+export function ExtensionsPage({ extensions, extErrors, dark }: PageProps) {
   const services = window.services!
   const [selected, setSelected] = useState<string | null>(extensions[0]?.id ?? null)
   const [draft, setDraft] = useState<Draft | null>(() => (extensions[0] ? toDraft(extensions[0]) : null))
@@ -123,6 +131,9 @@ export function ExtensionsPage({ extensions, dark }: { extensions: WidgetExtensi
           >
             <Puzzle className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{ext.name}</span>
+            {extErrors[ext.id]?.length ? (
+              <span className="ml-auto size-1.5 shrink-0 rounded-full bg-destructive" title="悬浮层里有报错" />
+            ) : null}
           </button>
         ))}
         <Button variant="ghost" size="sm" className="justify-start" onClick={create}>
@@ -183,13 +194,16 @@ export function ExtensionsPage({ extensions, dark }: { extensions: WidgetExtensi
                   ))}
                 </div>
               )}
+              {draft.id && extErrors[draft.id]?.length ? (
+                <RuntimeErrors errors={extErrors[draft.id]} onClear={() => services.clearExtErrors(draft.id!)} />
+              ) : null}
               <Button variant="ghost" size="sm" className="justify-start" onClick={() => setShowDocs(!showDocs)}>
                 <BookOpen /> API 说明
               </Button>
               {showDocs && (
                 <div className="min-h-0 flex-1 overflow-auto rounded-md border p-2 text-[11px] leading-relaxed">
                   {API_DOCS.map((d) => (
-                    <div key={d.name} className="mb-1.5">
+                    <div key={d.signature} className="mb-1.5">
                       <code className="font-mono text-foreground">{d.signature}</code>
                       <div className="text-muted-foreground">{d.doc}</div>
                     </div>
@@ -250,6 +264,30 @@ export function ExtensionsPage({ extensions, dark }: { extensions: WidgetExtensi
           </Button>
         </div>
       )}
+    </div>
+  )
+}
+
+/** 挂件在悬浮层里运行时的报错（预览里的报错显示在预览下面） */
+function RuntimeErrors({ errors, onClear }: { errors: ExtError[]; onClear(): void }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-destructive/30 p-2">
+      <div className="flex items-center justify-between text-[11px] font-medium text-destructive">
+        悬浮层里的报错
+        <button className="text-muted-foreground hover:text-foreground" onClick={onClear}>
+          清空
+        </button>
+      </div>
+      <div className="max-h-32 overflow-auto font-mono text-[11px] leading-snug">
+        {[...errors].reverse().map((e) => (
+          <div key={`${e.time}-${e.message}`} className={cn('py-0.5', e.fatal ? 'text-destructive' : 'text-muted-foreground')}>
+            <span className="text-muted-foreground/70">{new Date(e.time).toLocaleTimeString('zh-CN', { hour12: false })} </span>
+            {e.line ? `第 ${e.line} 行：` : ''}
+            {e.message}
+            {e.count > 1 && <span className="text-muted-foreground/70"> ×{e.count}</span>}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

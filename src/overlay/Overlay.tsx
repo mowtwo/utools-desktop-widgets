@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { LineItem, OverlayPayload } from '@/types/line'
+import type { HandleContent, LineOp } from '@/widget/runtime'
 import { applyTheme } from '@/lib/theme'
 import { CARD_WIDTH, PANEL_HEIGHT, PIN_ABOVE, tiltOf } from './layout'
 import { Pegged } from './Pegged'
@@ -47,6 +48,12 @@ export default function Overlay() {
   const [payload, setPayload] = useState<OverlayPayload | null>(null)
   const [revealed, setRevealed] = useState(false)
   const [dark, setDark] = useState(false)
+  /** 正在专注的挂件：其他东西都藏起来 */
+  const [focusOwner, setFocusOwner] = useState<string | null>(null)
+  /** 小把手上的内容和占用它的挂件 */
+  const [handleContent, setHandleContent] = useState<(HandleContent & { owner: string }) | null>(null)
+  /** 要求晾衣绳保持展开的挂件 */
+  const keepOpen = useRef(new Set<string>())
   const interactive = useRef(false)
   const revealedRef = useRef(false)
   const peekUntil = useRef(0)
@@ -77,6 +84,7 @@ export default function Overlay() {
   const setInteractive = useCallback((next: boolean) => {
     if (interactive.current === next) return
     interactive.current = next
+    window.overlay?.log('interactive', next)
     window.overlay?.setInteractive(next)
   }, [])
 
@@ -156,8 +164,9 @@ export default function Overlay() {
   }, [tick])
 
   const reveal = useCallback(
-    (next: boolean) => {
+    (next: boolean, reason = '') => {
       if (revealedRef.current === next) return
+      window.overlay?.log(next ? 'reveal' : 'hide', { reason, visibility: document.visibilityState })
       revealedRef.current = next
       setRevealed(next)
       // 透明窗口不在前台时可能不重绘，状态变化时请主界面让悬浮层整页重绘一次
@@ -186,6 +195,34 @@ export default function Overlay() {
     dragOutUntil.current = Date.now() + DRAG_OUT_MAX_MS
   }, [])
 
+  // 挂件的 api.line.*：宿主（WidgetFrame）已经校验过参数和频率
+  const onWidgetLine = useCallback(
+    (id: string, op: LineOp, value?: boolean) => {
+      switch (op) {
+        case 'keepOpen':
+          if (value) keepOpen.current.add(id)
+          else keepOpen.current.delete(id)
+          break
+        case 'focus':
+          setFocusOwner((cur) => (value ? id : cur === id ? null : cur))
+          break
+        case 'collapse':
+          peekUntil.current = 0
+          if (payloadRef.current?.mode !== 'pinned') reveal(false, `widget-collapse:${id}`)
+          break
+        case 'reveal':
+          peekUntil.current = Date.now() + 5000
+          reveal(true, `widget-reveal:${id}`)
+          break
+      }
+    },
+    [reveal],
+  )
+
+  const onWidgetHandle = useCallback((id: string, value: HandleContent | null) => {
+    setHandleContent((cur) => (value ? { ...value, owner: id } : cur?.owner === id ? null : cur))
+  }, [])
+
   const revealedOrPinned = () => revealedRef.current || payloadRef.current?.mode === 'pinned'
 
   const kick = useCallback(
@@ -205,7 +242,7 @@ export default function Overlay() {
     })
     window.overlay?.onPeek((duration) => {
       peekUntil.current = Date.now() + (duration ?? PEEK_MS)
-      reveal(true)
+      reveal(true, 'peek')
     })
     window.overlay?.ready()
   }, [reveal])
@@ -296,7 +333,7 @@ export default function Overlay() {
         const inNotch = notch && Math.abs(p.x - center) < NOTCH_HALF
         if (inside && p.y <= bounds.y + 1 && !inNotch) {
           edgeSince ||= now
-          if (now - edgeSince >= REVEAL_DWELL_MS) reveal(true)
+          if (now - edgeSince >= REVEAL_DWELL_MS) reveal(true, 'edge')
         } else {
           edgeSince = 0
         }
@@ -304,9 +341,9 @@ export default function Overlay() {
       }
       edgeSince = 0
       const away = !inside || (p.y > bounds.y + topInset + PANEL_HEIGHT + 30 && !overHit(p))
-      if (away && now >= peekUntil.current && !drag.current) {
+      if (away && now >= peekUntil.current && !drag.current && keepOpen.current.size === 0) {
         awaySince ||= now
-        if (now - awaySince >= hideDelay) reveal(false)
+        if (now - awaySince >= hideDelay) reveal(false, 'away')
       } else {
         awaySince = 0
       }
@@ -426,6 +463,9 @@ export default function Overlay() {
             onPinDown={onPinDown}
             kick={kick}
             onDragOut={onDragOut}
+            dimmed={focusOwner !== null && focusOwner !== item.id}
+            onWidgetLine={onWidgetLine}
+            onWidgetHandle={onWidgetHandle}
           />
         ))}
       </div>
@@ -437,10 +477,23 @@ export default function Overlay() {
           title="拉下晾衣绳"
           className="group absolute flex -translate-x-1/2 cursor-pointer justify-center px-6 pt-1 pb-2"
           style={{ top: payload.topInset, left: `${HANDLE_X[payload.handle] * 100}%` }}
-          onMouseEnter={() => reveal(true)}
-          onClick={() => reveal(true)}
+          onMouseEnter={() => reveal(true, 'handle-hover')}
+          onClick={() => reveal(true, 'handle-click')}
         >
-          <div className="h-[5px] w-14 rounded-full bg-neutral-500/40 shadow-[0_0_0_0.5px_rgba(255,255,255,0.5)] transition group-hover:w-20 group-hover:bg-neutral-500/70" />
+          {handleContent && (handleContent.text || handleContent.progress !== undefined) ? (
+            // 挂件占用了把手（api.handle.set）：显示它的文字和进度
+            <div className="relative flex h-5 min-w-14 items-center justify-center overflow-hidden rounded-full bg-neutral-900/75 px-2.5 text-[11px] font-medium whitespace-nowrap text-white shadow-[0_1px_4px_rgba(0,0,0,0.25)] transition group-hover:bg-neutral-900/90">
+              {handleContent.progress !== undefined && (
+                <div
+                  className="absolute inset-y-0 left-0 bg-white/20 transition-[width] duration-700"
+                  style={{ width: `${handleContent.progress * 100}%` }}
+                />
+              )}
+              <span className="relative tabular-nums">{handleContent.text}</span>
+            </div>
+          ) : (
+            <div className="h-[5px] w-14 rounded-full bg-neutral-500/40 shadow-[0_0_0_0.5px_rgba(255,255,255,0.5)] transition group-hover:w-20 group-hover:bg-neutral-500/70" />
+          )}
         </div>
       )}
     </>

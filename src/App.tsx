@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Activity, Bug, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
+import { Activity, Bug, HeartPulse, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -123,7 +123,7 @@ export default function App() {
       </TabsContent>
       <TabsContent value="extensions" className="min-h-0 flex-1 p-4">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">加载编辑器…</div>}>
-          <ExtensionsPage key={line.extensions.length ? 'ready' : 'empty'} extensions={line.extensions} dark={dark} />
+          <ExtensionsPage key={line.extensions.length ? 'ready' : 'empty'} extensions={line.extensions} extErrors={line.extErrors} dark={dark} />
         </Suspense>
       </TabsContent>
     </Tabs>
@@ -147,6 +147,7 @@ function LinePage({ line }: { line: LineState }) {
   const [note, setNote] = useState('')
   const [kind, setKind] = useState<'note' | 'todo'>('note')
   const noteInput = useRef<HTMLInputElement>(null)
+  const [keepAlive, setKeepAlive] = useState(() => services.hasKeepAlive())
 
   useEffect(() => {
     const onFocusTodo = () => {
@@ -185,6 +186,22 @@ function LinePage({ line }: { line: LineState }) {
       <section className="divide-y rounded-xl border bg-card">
         <Row icon={<Shirt />} title="晾衣绳" hint="挂在屏幕顶部，除了挂着的东西都能点穿">
           <Switch checked={line.enabled} onCheckedChange={services.setEnabled} />
+        </Row>
+        <Row
+          icon={<HeartPulse />}
+          title="保持显示"
+          hint="uTools 会把后台的插件结束，晾衣绳随之消失；开启后每分钟检查一次，被结束就自动恢复"
+        >
+          <Switch
+            checked={keepAlive}
+            onCheckedChange={async (on) => {
+              if (on) setKeepAlive(await services.requestKeepAlive())
+              else {
+                services.removeKeepAlive()
+                setKeepAlive(false)
+              }
+            }}
+          />
         </Row>
         <Row
           icon={<Monitor />}

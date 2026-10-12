@@ -54,9 +54,14 @@ interface Window {
     clearItems(): void
     peek(): void
     openOverlayDevTools(): void
+    clearExtErrors(ext: string): void
+    hasKeepAlive(): boolean
+    requestKeepAlive(): Promise<boolean>
+    removeKeepAlive(): void
   }
   /** 悬浮层窗口 preload（public/overlay_preload.js） */
   overlay?: {
+    log(event: string, detail?: unknown): void
     onState(listener: (payload: import('./line').OverlayPayload) => void): void
     onPeek(listener: (duration?: number) => void): void
     ready(): void
@@ -73,6 +78,7 @@ interface Window {
     listFolder(dir: string, limit: number): { total: number; entries: import('./line').FolderEntry[]; error?: string }
     saveWidgetData(id: string, data: Record<string, unknown>): void
     notify(text: string): void
+    reportWidgetError(ext: string, message: string, line?: number, fatal?: boolean): void
     watchCursor(listener: (point: { x: number; y: number }) => number | void): () => void
     copyImage(filePath: string): boolean
     copyText(text: string): boolean

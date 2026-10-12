@@ -19,6 +19,21 @@ const X_MAX = 0.96
 const dataDir = utools.getPluginLocalDataPath()
 const imageDir = path.join(dataDir, 'images')
 const stateFile = path.join(dataDir, 'state.json')
+const logFile = path.join(dataDir, 'debug.log')
+/** 守护定时任务：插件在后台被 uTools 结束后，每分钟把它拉起来、重开悬浮层 */
+const KEEPALIVE = 'keepalive'
+
+/** 运行日志：排查悬浮层消失、唤不出来时用；超过 256KB 轮换一次 */
+function log(event, detail) {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true })
+    try {
+      if (fs.statSync(logFile).size > 256 * 1024) fs.renameSync(logFile, logFile + '.1')
+    } catch {}
+    const line = `${new Date().toISOString()} main ${event}${detail === undefined ? '' : ' ' + JSON.stringify(detail)}\n`
+    fs.appendFileSync(logFile, line)
+  } catch {}
+}
 
 const defaultState = {
   enabled: true,
@@ -32,6 +47,8 @@ const defaultState = {
   handle: null,
   /** 自动隐藏：鼠标离开多久后收起（ms） */
   hideDelay: 800,
+  /** 每个扩展在悬浮层里的运行报错：{ [extId]: [{ time, message, line, fatal, count }] }，每个最多留 20 条 */
+  extErrors: {},
   /** 开发模式下的诊断面板，默认关 */
   debugHud: false,
   /** 内置挂件扩展是否已写入过数据库（删掉后不再自动补回） */
@@ -135,6 +152,7 @@ function snapshot() {
     hideDelay: state.hideDelay,
     seeded: state.seeded,
     debugHud: state.debugHud,
+    extErrors: state.extErrors,
     items: viewItems(),
     extensions,
   }
@@ -166,12 +184,14 @@ function emit() {
   pushToOverlay()
 }
 
-function closeOverlay() {
+function closeOverlay(reason) {
+  if (overlay) log('overlay-close', { reason })
   if (overlay && !overlay.win.isDestroyed()) overlay.win.destroy()
   overlay = null
 }
 
 function openOverlay(display) {
+  log('overlay-open', { display: display.id, bounds: display.bounds, workAreaY: display.workArea.y })
   const { bounds } = display
   // Windows 下使用 fullscreen 避免窗口尺寸限制（见官方文档「全屏透明置顶窗口」）
   const fullscreenable = utools.isWindows()
@@ -226,11 +246,12 @@ function openOverlay(display) {
 /** 让悬浮层与当前状态、屏幕布局一致 */
 function syncOverlay() {
   if (!state.enabled) {
-    closeOverlay()
+    closeOverlay('disabled')
     return
   }
   const { display } = resolveDisplay()
-  if (overlay && (overlay.win.isDestroyed() || overlay.displayId !== display.id)) closeOverlay()
+  if (overlay && overlay.win.isDestroyed()) closeOverlay('destroyed')
+  else if (overlay && overlay.displayId !== display.id) closeOverlay('display-switch')
   if (!overlay) openOverlay(display)
   else pushToOverlay()
 }
@@ -248,7 +269,8 @@ function startDisplayWatch() {
     lastKey = key
     // 屏幕插拔或分辨率变化：重新选屏（选中的屏幕没了就回退主屏），并通知设置页
     if (changed) {
-      closeOverlay()
+      log('displays-changed', key)
+      closeOverlay('displays-changed')
       syncOverlay()
       emit()
     }
@@ -380,6 +402,7 @@ function clipboardItems() {
 }
 
 ipcRenderer.on('overlay:ready', () => {
+  log('overlay-ready')
   if (!overlay) return
   overlay.ready = true
   pushToOverlay()
@@ -447,8 +470,40 @@ ipcRenderer.on('overlay:focus', () => {
   if (overlay && !overlay.win.isDestroyed()) overlay.win.focus()
 })
 
+// 挂件报错：同一条连着出现只累加次数；落盘和通知设置页都节流，挂件疯狂报错也不会拖慢插件
+let errorFlush = 0
+ipcRenderer.on('overlay:widget-error', (_e, ext, message, line, fatal) => {
+  const list = [...(state.extErrors[ext] || [])]
+  const last = list[list.length - 1]
+  const msg = String(message).slice(0, 500)
+  if (last && last.message === msg && last.line === line) list[list.length - 1] = { ...last, count: last.count + 1, time: Date.now() }
+  else list.push({ time: Date.now(), message: msg, line: typeof line === 'number' ? line : undefined, fatal: !!fatal, count: 1 })
+  state = { ...state, extErrors: { ...state.extErrors, [ext]: list.slice(-20) } }
+  if (fatal) log('widget-fatal', { ext, message: msg })
+  if (!errorFlush) {
+    errorFlush = setTimeout(() => {
+      errorFlush = 0
+      saveState()
+      const snap = snapshot()
+      for (const l of listeners) l(snap)
+    }, 2000)
+  }
+})
+
 ipcRenderer.on('overlay:notify', (_e, text) => {
   utools.showNotification(String(text).slice(0, 200))
+})
+
+log('preload-start', { enabled: state.enabled, mode: state.mode })
+
+utools.onPluginOut((isKill) => log('plugin-out', { isKill }))
+
+// 守护任务触发：插件刚被拉起来时直接重开悬浮层，不依赖设置页
+utools.onScheduleTrigger(({ code }) => {
+  if (code !== KEEPALIVE) return
+  const alive = !!overlay && !overlay.win.isDestroyed()
+  if (!alive) log('keepalive-restore')
+  window.services.start()
 })
 
 // 其他设备同步过来新的扩展
@@ -520,6 +575,8 @@ window.services = {
   removeExtension(id) {
     utools.db.remove(EXT_PREFIX + id)
     extensions = loadExtensions()
+    const { [id]: _removed, ...extErrors } = state.extErrors
+    state = { ...state, extErrors }
     update({ items: state.items.filter((it) => !(it.type === 'widget' && it.ext === id)) })
   },
   hangWidget: (ext) => hang([widgetItem(ext)]),
@@ -549,6 +606,30 @@ window.services = {
   clearItems() {
     for (const it of state.items) removeOwnedFile(it)
     update({ items: state.items.filter((it) => it.type === 'widget') })
+  },
+  clearExtErrors(ext) {
+    const { [ext]: _removed, ...rest } = state.extErrors
+    update({ extErrors: rest })
+  },
+  /** 守护任务是否已创建（用户在 uTools 里同意过） */
+  hasKeepAlive() {
+    try {
+      return utools.getSchedules().some((s) => s.code === KEEPALIVE)
+    } catch {
+      return false
+    }
+  },
+  /** 申请每分钟触发一次的守护任务，最终是否创建由用户决定 */
+  async requestKeepAlive() {
+    await utools.requestSchedule({ code: KEEPALIVE, label: '晾衣绳：被结束后自动恢复', trigger: { cron: '* * * * *' } })
+    log('keepalive-request', { created: window.services.hasKeepAlive() })
+    return window.services.hasKeepAlive()
+  },
+  removeKeepAlive() {
+    try {
+      utools.removeSchedule(KEEPALIVE)
+    } catch {}
+    log('keepalive-remove')
   },
   /** 开发模式下打开悬浮层的开发者工具 */
   openOverlayDevTools() {
