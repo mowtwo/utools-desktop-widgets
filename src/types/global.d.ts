@@ -114,6 +114,7 @@ interface Window {
     todoToggle(cardId: string, lineId: string): void
     todoDelete(cardId: string, lineId: string): void
     todoComplete(cardId: string): void
+    todoAdd(cardId: string, text: string): void
     /** 让悬浮层获得键盘焦点（在夹子上直接打字时） */
     focus(): void
     focusOnReveal(): void

@@ -724,6 +724,7 @@ ipcRenderer.on('overlay:add-todo', (_e, text, clipId) => {
 ipcRenderer.on('overlay:todo-toggle', (_e, cardId, lineId) => toggleTodoLine(cardId, lineId))
 ipcRenderer.on('overlay:todo-delete', (_e, cardId, lineId) => removeTodoLine(cardId, lineId))
 ipcRenderer.on('overlay:todo-complete', (_e, cardId) => completeTodoCard(cardId))
+ipcRenderer.on('overlay:todo-add', (_e, cardId, text) => addTodoLine(text, cardId))
 
 // 在夹子上直接写待办时需要键盘焦点，这会把 uTools 切到前台
 ipcRenderer.on('overlay:focus', () => {

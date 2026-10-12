@@ -1,15 +1,36 @@
-import { Check, CheckCheck, Trash2, X } from 'lucide-react'
-import type { TodoItem } from '@/types/line'
+import { useState } from 'react'
+import { Check, CheckCheck, Plus, X } from 'lucide-react'
+import { TODO_LINES, TODO_MAX, type TodoItem } from '@/types/line'
 import { TODO_COLORS } from '@/todo/colors'
 import { cn } from '@/lib/utils'
 import { CARD_WIDTH } from './layout'
 
-/** 待办卡片：最多 6 行；点圆圈标记完成（不删除），× 删除这一行 */
+/**
+ * 待办卡片：最多 6 行；点圆圈标记完成（不删除），× 删除这一行；
+ * 底部可以直接加一条、一键完成；取下整张卡片用通用的关闭按钮（条目删到 0 条时也会自动取下）
+ */
 export function TodoCard({ item }: { item: TodoItem }) {
   const o = window.overlay!
   const palette = TODO_COLORS[item.color] ?? TODO_COLORS.amber
+  const [adding, setAdding] = useState(false)
+  const [text, setText] = useState('')
+  const full = item.lines.length >= TODO_LINES
+
+  const startAdding = () => {
+    // 要在悬浮层里打字，得先拿到键盘焦点
+    o.focus()
+    setAdding(true)
+  }
+  const submit = () => {
+    if (text.trim()) o.todoAdd(item.id, text)
+    setText('')
+    setAdding(false)
+  }
+
   return (
     <div
+      // 整张卡片都接收鼠标：否则鼠标停在文字上时悬浮层会切回点击穿透，悬停出不来关闭按钮和删除 ×
+      data-hit
       className={cn('flex flex-col gap-1 rounded-[14px] border px-2 py-1.5 shadow-[0_5px_10px_rgba(0,0,0,0.16)]', palette.card)}
       style={{ width: CARD_WIDTH - 14 }}
     >
@@ -40,18 +61,47 @@ export function TodoCard({ item }: { item: TodoItem }) {
           </button>
         </div>
       ))}
-      {/* 一键完成、移除整张卡片（条目删到 0 条时也会自动取下） */}
-      <div className="mt-0.5 flex items-center justify-end gap-2 border-t border-current/10 pt-1 text-[10px]">
+
+      {adding && (
+        <form
+          data-hit
+          onSubmit={(e) => {
+            e.preventDefault()
+            submit()
+          }}
+        >
+          <input
+            autoFocus
+            value={text}
+            maxLength={TODO_MAX}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setText('')
+                setAdding(false)
+              }
+            }}
+            onBlur={() => !text.trim() && setAdding(false)}
+            placeholder="回车加上，Esc 取消"
+            className="w-full rounded-md border border-current/20 bg-white/70 px-1.5 py-0.5 text-[11px] outline-none dark:bg-black/20"
+          />
+        </form>
+      )}
+
+      <div className="mt-0.5 flex items-center gap-2 border-t border-current/10 pt-1 text-[10px]">
+        {!full && !adding && (
+          <button data-hit title="在这张卡片上加一条" onClick={startAdding} className="flex items-center gap-0.5 opacity-60 hover:opacity-100">
+            <Plus className="size-3" />
+            加一条
+          </button>
+        )}
+        <div className="flex-1" />
         {item.lines.some((l) => !l.done) && (
           <button data-hit title="全部标成已完成" onClick={() => o.todoComplete(item.id)} className="flex items-center gap-0.5 opacity-60 hover:opacity-100">
             <CheckCheck className="size-3" />
             全部完成
           </button>
         )}
-        <button data-hit title="移除这张卡片" onClick={() => o.remove(item.id)} className="flex items-center gap-0.5 opacity-60 hover:opacity-100">
-          <Trash2 className="size-3" />
-          移除
-        </button>
       </div>
     </div>
   )

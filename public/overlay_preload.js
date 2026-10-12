@@ -157,6 +157,10 @@ window.overlay = {
   todoDelete(cardId, lineId) {
     utools.sendToParent('overlay:todo-delete', cardId, lineId)
   },
+  /** 在卡片上直接加一条 */
+  todoAdd(cardId, text) {
+    utools.sendToParent('overlay:todo-add', cardId, text)
+  },
   /** 一键完成整张卡片 */
   todoComplete(cardId) {
     utools.sendToParent('overlay:todo-complete', cardId)

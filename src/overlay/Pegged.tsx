@@ -274,8 +274,10 @@ export function Pegged({
               title="取下"
               onClick={() => window.overlay?.remove(item.id)}
               className={cn(
-                'absolute top-1 left-1 z-10 flex size-5 scale-60 items-center justify-center rounded-full opacity-0 shadow',
+                'absolute z-10 flex size-5 scale-60 items-center justify-center rounded-full opacity-0 shadow',
                 'transition duration-150 group-hover:scale-100 group-hover:opacity-100',
+                // 待办卡片放到右上角外侧：放在左上角会压住第一行的勾选圈
+                item.type === 'todo' ? '-top-1.5 -right-1' : 'top-1 left-1',
                 glass,
               )}
             >
