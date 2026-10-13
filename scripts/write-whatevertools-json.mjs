@@ -26,6 +26,8 @@ const meta = {
     mcp: { reason: '让 AI Agent 挂东西、操作待办、发信号' },
   },
   standalone: { productName: '桌面晾衣绳', startFeature: 'settings' },
+  // 透明置顶悬浮层、桌面地毯这些只在桌面上成立，不出网页版
+  targets: ['utools', 'electron'],
 }
 fs.writeFileSync(new URL('../dist/whatevertools.json', import.meta.url), JSON.stringify(meta, null, 2) + '\n')
 console.log(`dist/whatevertools.json v${pkg.version}`)
