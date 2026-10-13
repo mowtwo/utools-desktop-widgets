@@ -335,7 +335,8 @@ export default function Overlay() {
   // - 拖文件出去时，按光标位置决定接不接收落点：在绳子区域里就接收（挂到绳上），否则点击穿透交给下面的应用
   // - 自动隐藏：鼠标顶到屏幕上边缘就滑出，离开晾衣绳就收起
   useEffect(() => {
-    if (!payload) return
+    // 只发信号的悬浮层没有晾衣绳，不用轮询光标
+    if (!payload || payload.role === 'ping') return
     const { bounds, topInset, notch, hideDelay } = payload
     const center = bounds.x + bounds.width / 2
     let edgeSince = 0
@@ -461,6 +462,22 @@ export default function Overlay() {
   )
 
   if (!payload) return null
+  if (payload.role === 'ping') {
+    return (
+      <>
+        <PingLayer settings={payload.ping} bounds={payload.bounds} onToast={showToast} />
+        {toast && (
+          <Toast
+            key={toast.key}
+            text={toast.text}
+            top={payload.topInset + 8}
+            left="50%"
+            onDone={() => setToast((t) => (t?.key === toast.key ? null : t))}
+          />
+        )}
+      </>
+    )
+  }
   const width = payload.bounds.width
   /** 还没完成的待办条数：收起时显示在小把手上 */
   const todoCount = payload.items.reduce((n, it) => n + (it.type === 'todo' ? it.lines.filter((l) => !l.done).length : 0), 0)

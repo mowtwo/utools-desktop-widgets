@@ -9,6 +9,23 @@ import { Wheel } from './lol/wheel'
 import { DEFAULT_WHEEL, SIGNALS, signalById, SignalBadge, SOUND_PACKS, type Signal } from './signals'
 import './lol/lol.css'
 
+/** 开源风格的信号（MCP 用的语义 id）→ 原版风格里意思最接近的信号 */
+const LOL_OF_SIGNAL: Record<string, string> = {
+  alert: 'generic',
+  danger: 'danger',
+  coming: 'omw',
+  help: 'assist',
+  look: 'needvision',
+  question: 'missing',
+  done: 'visioncleared',
+  idea: 'generic',
+  ok: 'omw',
+  wait: 'danger',
+  go: 'allin',
+  hot: 'danger',
+  target: 'push',
+}
+
 /** 开源风格轮盘的半径、中心取消区半径（px） */
 const RADIUS = 82
 const DEAD_ZONE = 26
@@ -202,10 +219,11 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
     return Math.round(((angle + 360) % 360) / 45) % 8
   })()
 
-  const fire = async (at: { x: number; y: number }, show: () => void, draw: Drawer) => {
+  /** capture=false：AI Agent 直接发的信号，只播放动画，不截图 */
+  const fire = async (at: { x: number; y: number }, show: () => void, draw: Drawer, capture = true) => {
     setWheelAt(null)
     const s = settingsRef.current
-    if (s.output !== 'none') {
+    if (capture && s.output !== 'none') {
       // 等轮盘从屏幕上消失再截，截图里不能有轮盘
       await nextFrame()
       await nextFrame()
@@ -220,7 +238,7 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
     show()
   }
 
-  const fireLol = (id: string, at: { x: number; y: number }) => {
+  const fireLol = (id: string, at: { x: number; y: number }, capture = true) => {
     const def = pingById(id)
     const size = settingsRef.current.size || 56
     void fire(
@@ -230,10 +248,11 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
         play(def.sound)
       },
       lolDrawer(def, size),
+      capture,
     )
   }
 
-  const fireOpen = (signal: Signal, at: { x: number; y: number }) => {
+  const fireOpen = (signal: Signal, at: { x: number; y: number }, capture = true) => {
     void fire(
       at,
       () => {
@@ -243,8 +262,23 @@ export function PingLayer({ settings, bounds, onToast }: Props) {
         setTimeout(() => setOpenPings((list) => list.filter((p) => p.key !== key)), settingsRef.current.duration)
       },
       openDrawer(signal, settingsRef.current.size || 56),
+      capture,
     )
   }
+
+  // AI Agent 直接发信号：按当前风格播放，原版风格换成语义最接近的信号
+  const fireRef = useRef({ fireLol, fireOpen })
+  useEffect(() => {
+    fireRef.current = { fireLol, fireOpen }
+  })
+  useEffect(() => {
+    window.overlay?.onPingFire(({ x, y, signal }) => {
+      const b = boundsRef.current
+      const at = { x: x - b.x, y: y - b.y }
+      if (settingsRef.current.style !== 'open') fireRef.current.fireLol(LOL_OF_SIGNAL[signal] ?? 'generic', at, false)
+      else fireRef.current.fireOpen(signalById(signal), at, false)
+    })
+  }, [])
 
   const onClick = (e: React.MouseEvent) => {
     if (!wheelAt) return

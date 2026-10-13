@@ -103,8 +103,10 @@ function loadPlace(saved) {
   return p;
 }
 let place = defaultPlacement();
+// 每块屏幕的地毯各存各的位置；这块屏幕还没存过时沿用旧版本（只有一张地毯时）的位置
+const PLACE_KEY = params.get('display') ? `rug.place.${params.get('display')}` : 'rug.place';
 try {
-  const raw = localStorage.getItem('rug.place');
+  const raw = localStorage.getItem(PLACE_KEY) ?? localStorage.getItem('rug.place');
   if (raw) place = loadPlace(JSON.parse(raw));
 } catch (e) { /* 本地存储不可用时用默认位置 */ }
 if (params.get('rug')) {
@@ -113,8 +115,8 @@ if (params.get('rug')) {
   place = { cx: p.x, cy: p.y, angle: 0, width: w || place.width };
 }
 // 测试时用 --rug 指定了位置，就不写回本地存储，免得覆盖老板平时摆好的位置
-const savePlace = () => { if (params.get('rug')) return; try { localStorage.setItem('rug.place', JSON.stringify(place)); } catch (e) {} };
-try { const raw = localStorage.getItem('rug.place'); if (raw && JSON.parse(raw).width !== place.width && !params.get('rug')) savePlace(); } catch (e) {}   // 老版本默认宽度放大以后马上存下，之后不再重复放大
+const savePlace = () => { if (params.get('rug')) return; try { localStorage.setItem(PLACE_KEY, JSON.stringify(place)); } catch (e) {} };
+try { const raw = localStorage.getItem(PLACE_KEY); if (raw && JSON.parse(raw).width !== place.width && !params.get('rug')) savePlace(); } catch (e) {}   // 老版本默认宽度放大以后马上存下，之后不再重复放大
 
 // ---------- 布料 ----------
 const NX = 70, NY = 44;   // 网格是正方形，宽高比 70:44 约等于参考视频里的 1.6

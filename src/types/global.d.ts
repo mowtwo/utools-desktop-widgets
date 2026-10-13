@@ -81,6 +81,7 @@ interface Window {
     setTodoTarget(id: string | null): void
     setTodoColor(cardId: string, color: import('./line').TodoColor): void
     setDisplay(displayId: number | null): void
+    setMultiLine(multiLine: boolean): void
     setMaxItems(maxItems: number): void
     addImageData(dataUrl: string): void
     addNote(text: string): void
@@ -98,6 +99,7 @@ interface Window {
   overlay?: {
     log(event: string, detail?: unknown): void
     onPingOpen(listener: (point: { x: number; y: number }) => void): void
+    onPingFire(listener: (payload: { x: number; y: number; signal: string }) => void): void
     pingCapture(rect: { x: number; y: number; width: number; height: number }): Promise<{ dataUrl?: string; scale?: number; error?: string }>
     pingResult(dataUrl: string): void
     onState(listener: (payload: import('./line').OverlayPayload) => void): void

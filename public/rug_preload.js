@@ -15,29 +15,33 @@ window.addEventListener('error', (e) => log('error', { message: e.message, line:
 
 const { ipcRenderer } = require('electron')
 
+/** 这张地毯所在的屏幕：每块屏幕可以各铺一张，发给主界面的消息都带上它 */
+const DISPLAY = Number(new URLSearchParams(location.search).get('display'))
+const send = (channel, ...args) => utools.sendToParent(channel, DISPLAY, ...args)
+
 window.rugBridge = {
   log,
   /** 页面准备好了：主界面据此把窗口显示出来（创建回调可能丢失） */
   ready() {
-    utools.sendToParent('rug:ready')
+    send('rug:ready')
   },
   onEdit(listener) {
     ipcRenderer.on('rug:edit', (_e, on) => listener(on))
   },
   endEdit() {
-    utools.sendToParent('rug:end-edit')
+    send('rug:end-edit')
   },
   cursor: () => utools.getCursorScreenPoint(),
   setAccept(accept) {
-    utools.sendToParent('rug:accept', accept)
+    send('rug:accept', accept)
   },
   pushBack() {
-    utools.sendToParent('rug:back')
+    send('rug:back')
   },
   saveMaterial(id) {
-    utools.sendToParent('rug:material', id)
+    send('rug:material', id)
   },
   hide() {
-    utools.sendToParent('rug:hide')
+    send('rug:hide')
   },
 }

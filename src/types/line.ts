@@ -80,6 +80,8 @@ export interface RugSettings {
   material: string
   quality: 'high' | 'medium' | 'low'
   precision: 'fine' | 'standard' | 'eco'
+  /** 铺地毯的屏幕 id；空表示跟着晾衣绳那块屏幕 */
+  displays: number[]
 }
 
 export interface PingSettings {
@@ -130,6 +132,8 @@ export interface LineState {
   focusOnReveal: boolean
   /** 渲染保活点 */
   renderAnchor: boolean
+  /** 每块屏幕一根晾衣绳 */
+  multiLine: boolean
   ping: PingSettings
   rug: RugSettings
   /** 地毯正在编辑 */
@@ -157,6 +161,8 @@ export interface Rect {
 }
 
 export interface OverlayPayload {
+  /** line：这块屏幕上挂着晾衣绳；ping：只用来发信号（别的屏幕上按了信号快捷键时临时打开） */
+  role: 'line' | 'ping'
   mode: LineMode
   items: LineItem[]
   bounds: Rect

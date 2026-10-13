@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Activity, Bug, Focus, FolderTree, HeartPulse, Sparkle, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
+import { Activity, Bug, Focus, FolderTree, HeartPulse, Sparkle, Camera, FolderOpen, GripHorizontal, Layers, ListTodo, Monitor, MonitorSmartphone, PanelTopOpen, Shirt, StickyNote, Timer, Trash2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,7 @@ import { PingPage } from '@/pages/ping-page'
 import { RugPage } from '@/pages/rug-page'
 import { useLine } from '@/lib/use-line'
 import { cn } from '@/lib/utils'
+import { displayName } from '@/lib/displays'
 import {
   isContent,
   TODO_MAX,
@@ -37,10 +38,6 @@ const HIDE_DELAYS = [
   { ms: 5000, label: '5 秒' },
 ]
 
-function displayName(d: DisplayInfo, index: number) {
-  const name = d.label || `屏幕 ${index + 1}`
-  return `${name} · ${d.width}×${d.height}${d.primary ? ' · 主屏' : ''}`
-}
 
 
 function ItemRow({ item }: { item: ContentItem }) {
@@ -202,10 +199,25 @@ function LinePage({ line }: { line: LineState }) {
             }}
           />
         </Row>
+        {displays.length > 1 && (
+          <Row
+            icon={<MonitorSmartphone />}
+            title="每块屏幕一根晾衣绳"
+            hint="每块屏幕各挂各的；每多一根要多一个透明窗口常驻（约 100MB 内存），屏幕多时留意占用"
+          >
+            <Switch checked={line.multiLine} onCheckedChange={services.setMultiLine} />
+          </Row>
+        )}
         <Row
           icon={<Monitor />}
-          title="显示在"
-          hint={line.displayFallback ? '选中的屏幕没有连接，暂时显示在主屏' : undefined}
+          title={line.multiLine && displays.length > 1 ? '主晾衣绳' : '显示在'}
+          hint={
+            line.displayFallback
+              ? '选中的屏幕没有连接，暂时显示在主屏'
+              : line.multiLine && displays.length > 1
+                ? '从 uTools 挂过来的东西挂在这根上'
+                : undefined
+          }
         >
           <Select
             value={line.displayId == null ? PRIMARY : String(line.displayId)}

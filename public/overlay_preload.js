@@ -8,6 +8,9 @@ const { pathToFileURL } = require('node:url')
 const { ipcRenderer, webUtils } = require('electron')
 
 const CURSOR_POLL_MS = 60
+/** 这个悬浮层所在的屏幕：每块屏幕一个悬浮层，发给主界面的消息都带上它 */
+const DISPLAY = Number(new URLSearchParams(location.search).get('display'))
+const send = (channel, ...args) => utools.sendToParent(channel, DISPLAY, ...args)
 const logFile = path.join(utools.getPluginLocalDataPath(), 'debug.log')
 
 /** 悬浮层自己写日志：主界面被结束时也能留下记录 */
@@ -38,19 +41,23 @@ window.overlay = {
   onPingOpen(listener) {
     ipcRenderer.on('overlay:ping-open', (_e, point) => listener(point))
   },
+  /** AI Agent 直接发信号（MCP）：不弹轮盘、不截图；point 是屏幕坐标，signal 是开源风格的信号 id */
+  onPingFire(listener) {
+    ipcRenderer.on('overlay:ping-fire', (_e, payload) => listener(payload))
+  },
   /** 截取屏幕上的一块（屏幕全局 DIP 坐标），返回 Data URL 和截图的像素比例 */
   pingCapture(rect) {
     const reqId = ++captureSeq
     return new Promise((resolve) => {
       captureWaiters.set(reqId, resolve)
-      utools.sendToParent('overlay:ping-capture', reqId, rect)
+      send('overlay:ping-capture', reqId, rect)
       setTimeout(() => {
         if (captureWaiters.delete(reqId)) resolve({ error: '截图超时' })
       }, 5000)
     })
   },
   pingResult(dataUrl) {
-    utools.sendToParent('overlay:ping-result', dataUrl)
+    send('overlay:ping-result', dataUrl)
   },
   onState(listener) {
     ipcRenderer.on('overlay:state', (_e, payload) => listener(payload))
@@ -60,36 +67,36 @@ window.overlay = {
     ipcRenderer.on('overlay:peek', (_e, duration) => listener(duration))
   },
   ready() {
-    utools.sendToParent('overlay:ready')
+    send('overlay:ready')
   },
   /** 鼠标在挂件上时关闭点击穿透，离开时恢复 */
   setInteractive(interactive) {
-    utools.sendToParent('overlay:interactive', interactive)
+    send('overlay:interactive', interactive)
   },
   /** 请主界面让悬浮层整页重绘 */
   repaint() {
-    utools.sendToParent('overlay:repaint')
+    send('overlay:repaint')
   },
   remove(id) {
-    utools.sendToParent('overlay:remove', id)
+    send('overlay:remove', id)
   },
   /** x：在绳子上的位置，占绳长的比例 */
   move(id, x) {
-    utools.sendToParent('overlay:move', id, x)
+    send('overlay:move', id, x)
   },
   addClip(x) {
-    utools.sendToParent('overlay:add-clip', x)
+    send('overlay:add-clip', x)
   },
   /** source：files 选文件 / paste 剪贴板 / capture 截图 */
   fillClip(clipId, source) {
-    utools.sendToParent('overlay:fill-clip', clipId, source)
+    send('overlay:fill-clip', clipId, source)
   },
   /** 从系统拖进来的文件 */
   drop(files, x, clipId) {
     const paths = Array.from(files)
       .map((f) => webUtils.getPathForFile(f))
       .filter(Boolean)
-    if (paths.length) utools.sendToParent('overlay:drop', paths, x, clipId)
+    if (paths.length) send('overlay:drop', paths, x, clipId)
   },
   /**
    * 轮询光标的屏幕坐标（DIP）。listener 返回下一次轮询的间隔（ms），不返回就用默认值；
@@ -145,40 +152,40 @@ window.overlay = {
     }
   },
   addTodo(text, clipId) {
-    utools.sendToParent('overlay:add-todo', text, clipId)
+    send('overlay:add-todo', text, clipId)
   },
   focus() {
-    utools.sendToParent('overlay:focus')
+    send('overlay:focus')
   },
   /** 勾选 / 取消勾选待办卡片里的一行（只标记完成，不删除） */
   todoToggle(cardId, lineId) {
-    utools.sendToParent('overlay:todo-toggle', cardId, lineId)
+    send('overlay:todo-toggle', cardId, lineId)
   },
   todoDelete(cardId, lineId) {
-    utools.sendToParent('overlay:todo-delete', cardId, lineId)
+    send('overlay:todo-delete', cardId, lineId)
   },
   /** 在卡片上直接加一条 */
   todoAdd(cardId, text) {
-    utools.sendToParent('overlay:todo-add', cardId, text)
+    send('overlay:todo-add', cardId, text)
   },
   /** 一键完成整张卡片 */
   todoComplete(cardId) {
-    utools.sendToParent('overlay:todo-complete', cardId)
+    send('overlay:todo-complete', cardId)
   },
   /** 用户拉下晾衣绳时：如果开了「滑出时获取焦点」，让悬浮层获得焦点（官方文档建议的保证渲染帧率的做法） */
   focusOnReveal() {
-    utools.sendToParent('overlay:focus-on-reveal')
+    send('overlay:focus-on-reveal')
   },
   /** 挂件 api.storage 的数据交给主界面保存 */
   saveWidgetData(id, data) {
-    utools.sendToParent('overlay:widget-data', id, data)
+    send('overlay:widget-data', id, data)
   },
   notify(text) {
-    utools.sendToParent('overlay:notify', text)
+    send('overlay:notify', text)
   },
   /** 挂件运行报错，记到设置页对应扩展下 */
   reportWidgetError(ext, message, line, fatal) {
-    utools.sendToParent('overlay:widget-error', ext, message, line, fatal)
+    send('overlay:widget-error', ext, message, line, fatal)
   },
   copyImage: (filePath) => utools.copyImage(filePath),
   copyText: (text) => utools.copyText(text),

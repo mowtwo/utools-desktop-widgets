@@ -83,5 +83,206 @@
         }
       ]
     }
-  ]
+  ],
+  "tools": {
+    "get_clothesline": {
+      "description": "读取用户屏幕顶部晾衣绳上挂着的东西：图片、便签、文件 / 文件夹、待办卡（含每一条待办的 id 和完成状态）、挂件、空夹子。按从左到右的顺序返回。同时返回用户的屏幕列表（send_ping 可以指定屏幕）。取下东西或操作待办前先用它拿到 id。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image",
+              "note",
+              "file",
+              "todo",
+              "widget",
+              "clip"
+            ],
+            "description": "只返回这一类；不填返回全部"
+          }
+        }
+      }
+    },
+    "hang_on_clothesline": {
+      "description": "把本地文件、文件夹或文字便签挂到用户屏幕顶部的晾衣绳上，方便用户随手拖用、双击打开。只记录路径，不复制、不移动文件。挂上后晾衣绳会滑下来给用户看一眼。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "文件或文件夹的绝对路径；文件夹会挂成可展开的衣架"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "文字便签，每条一张"
+          }
+        }
+      }
+    },
+    "remove_from_clothesline": {
+      "description": "从晾衣绳上取下东西（图片、便签、文件、待办卡、挂件、空夹子）。取下文件只是不再挂着，不会删除用户的文件。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "要取下的 id（来自 get_clothesline）"
+          },
+          "all": {
+            "type": "boolean",
+            "description": "为 true 时取下除挂件以外的全部东西"
+          }
+        }
+      }
+    },
+    "add_todo": {
+      "description": "在晾衣绳的待办卡上加一条待办（每条最多 30 字，每张卡片最多 6 条）。不指定卡片时加到用户设定的「快速添加」卡片；还没有卡片时自动新建一张。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "待办内容，超过 30 字会被截断"
+          },
+          "card_id": {
+            "type": "string",
+            "description": "加到这张待办卡（id 来自 get_clothesline）"
+          },
+          "new_card": {
+            "type": "boolean",
+            "description": "为 true 时新建一张卡片放这条待办，并设为快速添加的目标"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    },
+    "update_todo": {
+      "description": "修改一条待办：标记完成 / 未完成，或改文字。不给 line_id 并且 done 为 true 时，把整张卡片的待办都标成已完成。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "card_id": {
+            "type": "string",
+            "description": "待办卡 id"
+          },
+          "line_id": {
+            "type": "string",
+            "description": "待办条目 id"
+          },
+          "done": {
+            "type": "boolean",
+            "description": "是否已完成"
+          },
+          "text": {
+            "type": "string",
+            "description": "新的文字，最多 30 字"
+          }
+        },
+        "required": [
+          "card_id"
+        ]
+      }
+    },
+    "remove_todo": {
+      "description": "删除一条待办；不给 line_id 时取下整张待办卡。卡片的最后一条被删掉后，卡片也会一起取下。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "card_id": {
+            "type": "string",
+            "description": "待办卡 id"
+          },
+          "line_id": {
+            "type": "string",
+            "description": "待办条目 id"
+          }
+        },
+        "required": [
+          "card_id"
+        ]
+      }
+    },
+    "send_ping": {
+      "description": "在用户屏幕上直接发一个游戏风格的信号（图标 + 动画，按用户设置可能有提示音），用来提醒或示意用户，例如任务完成发 done、需要用户处理发 help、出错发 danger。不弹轮盘、不截图，几秒后自动消失。按要表达的意思选择 signal：alert 注意 / danger 危险 / coming 在路上 / help 求助 / look 看这里 / question 问号 / done 完成 / idea 好主意 / ok 收到 / wait 等一下 / go 冲 / hot 着火了 / target 目标。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "signal": {
+            "type": "string",
+            "enum": [
+              "alert",
+              "danger",
+              "coming",
+              "help",
+              "look",
+              "question",
+              "done",
+              "idea",
+              "ok",
+              "wait",
+              "go",
+              "hot",
+              "target"
+            ],
+            "description": "信号的意思：alert 注意 / danger 危险 / coming 在路上 / help 求助 / look 看这里 / question 问号 / done 完成 / idea 好主意 / ok 收到 / wait 等一下 / go 冲 / hot 着火了 / target 目标"
+          },
+          "position": {
+            "type": "string",
+            "enum": [
+              "cursor",
+              "center",
+              "top",
+              "bottom",
+              "left",
+              "right",
+              "top-left",
+              "top-right",
+              "bottom-left",
+              "bottom-right"
+            ],
+            "description": "在屏幕上的位置，默认 cursor（鼠标位置；目标屏幕上没有鼠标时为屏幕中间）"
+          },
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "精确位置：占目标屏幕宽度的比例，和 y 一起给时代替 position"
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "精确位置：占目标屏幕高度的比例"
+          },
+          "display": {
+            "type": "string",
+            "description": "发在哪块屏幕上：cursor（默认，鼠标所在的屏幕）、all（每块屏幕各发一个），或屏幕 id（get_clothesline 返回的 displays 里）"
+          }
+        },
+        "required": [
+          "signal"
+        ]
+      }
+    }
+  }
 }

@@ -1,10 +1,12 @@
-import { Cpu, Gauge, Move, Palette, RotateCcw, Shirt } from 'lucide-react'
+import { useState } from 'react'
+import { Cpu, Gauge, Monitor, Move, Palette, RotateCcw, Shirt } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Row } from '@/components/row'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import type { RugSettings } from '@/types/line'
+import { displayName } from '@/lib/displays'
+import type { DisplayInfo, RugSettings } from '@/types/line'
 
 /** 与 desktop-rug 的 MATERIAL_IDS 对应 */
 const MATERIALS = [
@@ -17,12 +19,40 @@ const MATERIALS = [
 
 export function RugPage({ rug, editing }: { rug: RugSettings; editing: boolean }) {
   const services = window.services!
+  const [displays, setDisplays] = useState<DisplayInfo[]>(() => services.listDisplays())
+  const chosen = (rug.displays ?? []).filter((id) => displays.some((d) => d.id === id))
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 p-5">
       <section className="divide-y rounded-xl border bg-card">
         <Row icon={<Shirt />} title="桌面地毯" hint="铺在桌面图标上、应用窗口下面，乱糟糟的图标往下一藏；文件不会被移动">
           <Switch checked={rug.enabled} onCheckedChange={(enabled) => services.setRug({ enabled })} />
         </Row>
+        {displays.length > 1 && (
+          <Row
+            icon={<Monitor />}
+            title="铺在"
+            hint={
+              chosen.length
+                ? `${chosen.length} 块屏幕各铺一张，各自摆放；每张都是一个全屏 WebGL 窗口，铺得越多越耗显卡`
+                : '没选时跟着晾衣绳那块屏幕；可以多选，每块屏幕各铺一张'
+            }
+          >
+            <ToggleGroup
+              type="multiple"
+              variant="outline"
+              size="sm"
+              value={chosen.map(String)}
+              onFocus={() => setDisplays(services.listDisplays())}
+              onValueChange={(v) => services.setRug({ displays: v.map(Number) })}
+            >
+              {displays.map((d, i) => (
+                <ToggleGroupItem key={d.id} value={String(d.id)} title={displayName(d, i)}>
+                  {d.primary ? '主屏' : `屏幕 ${i + 1}`}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </Row>
+        )}
         <Row
           icon={<Move />}
           title="编辑地毯"
