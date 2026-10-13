@@ -1,50 +1,16 @@
-// 仅声明本插件用到的 uTools API（依据 uTools 官方开发文档）与 preload 暴露的接口
+// uTools API 的完整类型来自 @whatevertools/utools（只有 .d.ts，不进打包产物，不影响 uTools 的打包和发布）
+/// <reference types="@whatevertools/utools/namespace" />
 
-interface UToolsMatchFile {
-  isFile: boolean
-  isDirectory: boolean
-  name: string
-  path: string
-}
+type UToolsApi = UTools.Api
+type UToolsMatchFile = UTools.MatchFile
+type UToolsPluginEnterAction = UTools.PluginEnterAction
+/** 本插件只用纯文字消息 */
+type UToolsAiMessage = UTools.AiMessage & { content?: string }
+type UToolsAiPromise<T> = UTools.AiPromise<T>
+type UToolsAiModel = UTools.AiModel
 
-interface UToolsPluginEnterAction {
-  code: string
-  type: 'text' | 'img' | 'files' | 'regex' | 'over' | 'window'
-  payload: unknown
-  from: 'main' | 'panel' | 'hotkey' | 'redirect'
-}
-
-interface UToolsAiMessage {
-  role: 'system' | 'user' | 'assistant'
-  content?: string
-  reasoning_content?: string
-}
-
-interface UToolsAiPromise<T> extends Promise<T> {
-  abort(): void
-}
-
-interface UToolsAiModel {
-  id: string
-  label: string
-  icon: string
-  cost?: number
-}
-
-interface UToolsApi {
-  ai(options: { model?: string; messages: UToolsAiMessage[] }, stream: (chunk: UToolsAiMessage) => void): UToolsAiPromise<void>
-  allAiModels(): Promise<UToolsAiModel[]>
-  onPluginEnter(cb: (action: UToolsPluginEnterAction) => void): void
-  isDarkColors(): boolean
-  isDev(): boolean
-  hideMainWindow(isRestorePreWindow?: boolean): boolean
-  showNotification(body: string, clickFeatureCode?: string): void
-  screenCapture(): Promise<string>
-  showOpenDialog(options: { title?: string; properties?: string[] }): string[] | undefined
-  startDrag(filePath: string | string[]): void
-  copyText(text: string): boolean
-  shellOpenExternal(url: string): Promise<void>
-}
+/** 构建时从 package.json 注入的版本号 */
+declare const __APP_VERSION__: string
 
 interface Window {
   utools?: UToolsApi

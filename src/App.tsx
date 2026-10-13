@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { FOCUS_TODO_EVENT } from '@/lib/enter'
 import { Row } from '@/components/row'
+import { AboutDialog } from '@/components/about-dialog'
 import { TodoSection } from '@/todo/todo-section'
 import { PingPage } from '@/pages/ping-page'
 import { RugPage } from '@/pages/rug-page'
@@ -94,13 +95,16 @@ export default function App() {
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex h-screen flex-col gap-0">
-      <div className="flex justify-center border-b px-5 py-2">
+      <div className="relative flex justify-center border-b px-5 py-2">
         <TabsList>
           <TabsTrigger value="line">晾衣绳</TabsTrigger>
           <TabsTrigger value="ping">信号</TabsTrigger>
           <TabsTrigger value="rug">地毯</TabsTrigger>
           <TabsTrigger value="extensions">挂件扩展</TabsTrigger>
         </TabsList>
+        <div className="absolute top-1/2 right-3 -translate-y-1/2">
+          <AboutDialog />
+        </div>
       </div>
       <TabsContent value="line" className="min-h-0 flex-1 overflow-auto">
         <LinePage line={line} />

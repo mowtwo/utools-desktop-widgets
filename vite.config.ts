@@ -2,12 +2,13 @@ import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import pkg from './package.json' with { type: 'json' }
 
 // uTools 以本地文件方式加载 dist/*.html，资源路径必须是相对路径
 export default defineConfig({
   base: './',
   // 构建时间写进代码，日志里据此判断测的是哪次构建
-  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()), __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, './src') },

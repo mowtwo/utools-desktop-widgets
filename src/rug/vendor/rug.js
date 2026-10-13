@@ -576,7 +576,8 @@ scene.add(rugGroup);
 let materialId = MATERIAL_IDS.includes(params.get('material')) ? params.get('material') : 'persian';
 // 本项目改动：每种花样只创建一次、之后复用，不再销毁重建（反复新建 WebGL 上下文会让地毯随机变黑）
 const surfaceCache = new Map();
-function setMaterial(id) {
+// report=false：插件主界面让它换的（设置页、别的屏幕的地毯同步过来），不再报回去，免得几张地毯来回互相触发
+function setMaterial(id, report = true) {
   if (!MATERIAL_IDS.includes(id)) return;
   materialId = id;
   if (surface && surface.setLive) surface.setLive(false);
@@ -599,7 +600,7 @@ function setMaterial(id) {
   liveUntil = surfaceBorn + LIVE_MS;
   surfaceLive = true;
   needsRender = true;
-  post({ type: 'material', id });
+  if (report) post({ type: 'material', id });
 }
 
 // 流苏：两条短边上的细线，跟着边缘的方向伸出去
@@ -1504,7 +1505,7 @@ function loop(t) {
 // ---------- 宿主调用的接口 ----------
 window.rugSetOption = (b) => { optionDown = b; setSelected(b); if (!b && deformed) maskDirty = true;   // 按着 Option 时控制点在四角，范围临时改回外形，松开再用网格
   needsRender = true; publishHit(); updateHandles(); };
-window.rugSetMaterial = (id) => { setMaterial(id); touchLive(); };
+window.rugSetMaterial = (id, silent) => { setMaterial(id, !silent); touchLive(); };
 window.rugReset = () => { place = defaultPlacement(); savePlace(); snapToRest(); phase = 'idle'; wake(); };   // 放回屏幕中间，同时摊平
 window.rugSetIcons = (list) => {
   icons = list.map(([x, y]) => { const p = toWorld(x, y); return { x: p.x, y: p.y }; });
@@ -1736,7 +1737,7 @@ if (params.get('fakeBumps')) {
 }
 if (params.get('reset')) window.rugReset();
 computeRest();
-setMaterial(materialId);
+setMaterial(materialId, false);
 wake();
 console.log('地毯就绪', W, H, 'dpr', devicePixelRatio, '材质', materialId, '约束', NC);
 if (params.get('pose') === 'fold') {

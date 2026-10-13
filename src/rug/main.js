@@ -139,6 +139,8 @@ bridge?.onEdit((on) => {
 setInterval(() => {
   if (!bridge) return
   const p = bridge.cursor()
+  // 插件重启的那一刻地毯窗口还在，可能拿不到光标位置
+  if (!p) return
   const x = p.x - originX
   const y = p.y - originY
   setAccept(dragging || inPolygon(x, y) || overToolbar(x, y))

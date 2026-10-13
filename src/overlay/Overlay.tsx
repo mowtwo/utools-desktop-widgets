@@ -34,6 +34,9 @@ const NOTCH_HALF = 130
 const HANDLE_X = { left: 0.25, center: 0.5, right: 0.75 }
 
 /** 每种东西压在绳子上的分量（相对一个绳节） */
+/** 动画循环连续跑这么久还没静止，就记一条诊断日志（ms） */
+const BUSY_LOG_MS = 10000
+
 const WEIGHT: Record<LineItem['type'], number> = { image: 10, file: 10, note: 7, widget: 8, todo: 4, clip: 2 }
 
 /** 帧统计：排查「拉下来了但没画出来」——动画帧回调和定时器各跑了几次 */
@@ -93,6 +96,8 @@ export default function Overlay() {
   const drag = useRef<{ id: string; offset: number; startX: number; moved: boolean } | null>(null)
   const frame = useRef<(() => void) | null>(null)
   const lastTime = useRef(0)
+  /** 诊断：这次唤醒后动画循环已经连续跑了多久，帧间隔的范围；超过 BUSY_LOG_MS 还没静止就记一条日志 */
+  const busy = useRef({ since: 0, minGap: Infinity, maxGap: 0, logged: false })
   /** 正在把文件拖到别的应用，到这个时间点之前保持绳子展开、窗口可交互 */
   const dragOutUntil = useRef(0)
   /** 拖过的挂件叠到最上面 */
@@ -119,8 +124,13 @@ export default function Overlay() {
       return
     }
     // 按真实经过的时间补算（帧很稀疏时也能及时走到终点），每小步不超过 1/60s
-    let remaining = Math.min(0.5, (time - lastTime.current) / 1000 || 1 / 60)
+    const gap = time - lastTime.current
+    let remaining = Math.min(0.5, gap / 1000 || 1 / 60)
     lastTime.current = time
+    const b = busy.current
+    if (!b.since) Object.assign(b, { since: time, minGap: Infinity, maxGap: 0, logged: false })
+    b.minGap = Math.min(b.minGap, gap)
+    b.maxGap = Math.max(b.maxGap, gap)
     const xOf = (it: LineItem) => overrides.current.get(it.id) ?? it.x * r.width
     const loads: Load[] = items.current.map((it) => ({ x: xOf(it), weight: WEIGHT[it.type] }))
     const pl = payloadRef.current
@@ -177,6 +187,23 @@ export default function Overlay() {
       }
       stripRef.current.style.translate = `0 ${sl.pos}px`
     }
+    // 正常几秒内就会静止；一直停不下来（有人反馈绳子一直抖）时留下现场，方便排查
+    if (!resting && !drag.current && !b.logged && time - b.since > BUSY_LOG_MS) {
+      b.logged = true
+      window.overlay?.log('rope-busy', {
+        seconds: Math.round((time - b.since) / 1000),
+        motion: Math.round(r.motion() * 100) / 100,
+        items: items.current.length,
+        pendulums: items.current.slice(0, 8).map((it) => {
+          const p = pendulums.current.get(it.id)
+          return p ? [it.type, Math.round(p.angle * 1e4) / 1e4, Math.round(p.velocity * 1e4) / 1e4] : null
+        }),
+        gapMs: [Math.round(b.minGap * 10) / 10, Math.round(b.maxGap * 10) / 10],
+        slide: [Math.round(sl.pos * 10) / 10, Math.round(sl.vel * 10) / 10],
+        width: r.width,
+      })
+    }
+    if (resting) b.since = 0
     // 静止后停掉循环，有新动静时再唤醒
     frame.current = resting ? null : schedule(tick)
   }, [])

@@ -983,11 +983,13 @@ ipcRenderer.on('rug:back', (_e, from) => {
 
 // 一张地毯换了花样：存下来，其他屏幕上的地毯也换成一样的
 ipcRenderer.on('rug:material', (_e, from, id) => {
+  // 地毯被设成某个花样后也会报上来（包括这里让它换的）：和现在一样就不再转发，否则两张地毯会来回互相触发
+  if (String(id) === state.rug.material) return
   log('rug-material', id)
   state = { ...state, rug: { ...state.rug, material: String(id) } }
   saveState()
   for (const [displayId, entry] of rugs) {
-    if (displayId !== from && alive(entry)) void entry.win.webContents.executeJavaScript(`window.rugSetMaterial && window.rugSetMaterial(${JSON.stringify(String(id))})`)
+    if (displayId !== from && alive(entry)) void entry.win.webContents.executeJavaScript(`window.rugSetMaterial && window.rugSetMaterial(${JSON.stringify(String(id))}, true)`)
   }
   emit()
 })
@@ -1048,7 +1050,7 @@ window.services = {
   setRug(patch) {
     update({ rug: { ...state.rug, ...patch } })
     // 换花样不重开窗口，直接让地毯换
-    if (patch.material) eachRug(`window.rugSetMaterial && window.rugSetMaterial(${JSON.stringify(patch.material)})`)
+    if (patch.material) eachRug(`window.rugSetMaterial && window.rugSetMaterial(${JSON.stringify(patch.material)}, true)`)
   },
   /** 进入地毯编辑模式：收起 uTools 面板，地毯浮到最上层，屏幕上方出现编辑工具栏 */
   editRug() {

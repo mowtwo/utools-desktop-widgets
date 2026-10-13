@@ -78,6 +78,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.1
         version: 6.1.2(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))
+      '@whatevertools/utools':
+        specifier: ^0.1.1
+        version: 0.1.1
       oxlint:
         specifier: ^1.81.0
         version: 1.87.0
@@ -1383,6 +1386,14 @@ packages:
       babel-plugin-react-compiler:
         optional: true
       oxc-transform-react:
+        optional: true
+
+  '@whatevertools/utools@0.1.1':
+    resolution: {integrity: sha512-TMwsklGNHqi/3vXZPvzz98ZCNhVCDV1VLzhfwP4quO16eEBUxhUh3uuNq3mJWHe6fISjKZgySnoDuYya0heUaQ==}
+    peerDependencies:
+      '@whatevertools/api': ^0.1.1
+    peerDependenciesMeta:
+      '@whatevertools/api':
         optional: true
 
   accepts@2.0.0:
@@ -4125,6 +4136,8 @@ snapshots:
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.3.4(@types/node@24.19.2)(jiti@2.7.0)
+
+  '@whatevertools/utools@0.1.1': {}
 
   accepts@2.0.0:
     dependencies:

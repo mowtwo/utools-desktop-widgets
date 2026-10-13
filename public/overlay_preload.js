@@ -107,7 +107,14 @@ window.overlay = {
     let stopped = false
     const loop = () => {
       if (stopped) return
-      const next = listener(utools.getCursorScreenPoint())
+      // 拿不到光标位置（插件正在重启）或处理出错时跳过这一次，轮询本身不能停
+      let next
+      try {
+        const point = utools.getCursorScreenPoint()
+        if (point) next = listener(point)
+      } catch (err) {
+        log('cursor-error', String(err && err.message))
+      }
       timer = setTimeout(loop, typeof next === 'number' ? next : CURSOR_POLL_MS)
     }
     timer = setTimeout(loop, CURSOR_POLL_MS)
