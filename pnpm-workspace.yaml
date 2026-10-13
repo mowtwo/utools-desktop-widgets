@@ -1,2 +1,3 @@
+# 自己发布的 whatevertools 包（npm 可信发布，来源可控）不受「发布满 1 天才能装」的限制；其他依赖照常
 minimumReleaseAgeExclude:
-  - '@whatevertools/utools@0.1.1'
+  - '@whatevertools/*'

@@ -58,11 +58,13 @@ pnpm watch        # 监听修改并持续构建
 可以用 [whatevertools](https://whatevertools.mowtwo.com) 打包成不依赖 uTools 的 Electron 独立应用（[案例说明](https://whatevertools.mowtwo.com/cases/desktop-widgets)）：
 
 ```bash
-pnpm build
-npx whatevertools pack dist --target electron --product 桌面晾衣绳
+pnpm release        # dist（uTools 插件）+ out/utools、out/electron
+pnpm release:app    # 另外出 Electron 安装包（dmg / nsis / AppImage，签名凭据走环境变量）
 ```
 
-透明置顶的悬浮层、桌面地毯只在桌面上成立，`dist/whatevertools.json` 里声明了 `targets: ["utools", "electron"]`，不出网页版。这个文件只给兼容层用，uTools 不读取。
+打包配置在 `whatevertools.config.ts`，身份、权限说明和 `targets` 在 `vite.config.ts` 的 `whatevertools({ manifest })`。
+
+透明置顶的悬浮层、桌面地毯只在桌面上成立，插件声明了 `targets: ["utools", "electron"]`，不出网页版。这个文件只给兼容层用，uTools 不读取。
 
 ## 致谢
 
