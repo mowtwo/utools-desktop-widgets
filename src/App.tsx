@@ -90,7 +90,16 @@ export default function App() {
   }, [])
 
   if (!window.services) {
-    return <div className="p-6 text-sm text-muted-foreground">请在 uTools 中打开</div>
+    const error = (window as { __preloadError?: string }).__preloadError
+    if (!error) return <div className="p-6 text-sm text-muted-foreground">请在 uTools 中打开</div>
+    // preload 加载失败：显示原因，方便反馈
+    return (
+      <div className="space-y-2 p-6 text-sm">
+        <div className="font-medium">插件初始化失败</div>
+        <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap break-all select-text">{error}</pre>
+        <p className="text-xs text-muted-foreground">请截图发给开发者。</p>
+      </div>
+    )
   }
 
   return (
