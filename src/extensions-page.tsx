@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Puzzle, Save, Send, Sparkles, Trash2 } from 'lucide-react'
+import { Plus, Puzzle, RotateCcw, Save, Send, Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CodeEditor } from '@/components/code-editor'
@@ -42,6 +42,10 @@ export function ExtensionsPage({ extensions, extErrors, dark }: PageProps) {
   const [showAi, setShowAi] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+
+  /** 当前选中的扩展（列表里的最新状态）；内置案例扩展删不掉，只能恢复默认 */
+  const current = draft?.id ? extensions.find((e) => e.id === draft.id) : undefined
+  const builtin = !!current?.builtin
 
   const edit = (patch: Partial<Draft>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d))
@@ -226,24 +230,46 @@ export function ExtensionsPage({ extensions, extErrors, dark }: PageProps) {
             </Button>
             {message && <span className="text-xs text-muted-foreground">{message}</span>}
             <div className="flex-1" />
-            {draft.id && (
-              <Button
-                variant={confirmDelete ? 'destructive' : 'ghost'}
-                onClick={() => {
-                  if (!confirmDelete) {
-                    setConfirmDelete(true)
-                    return
-                  }
-                  services.removeExtension(draft.id!)
-                  const next = extensions.find((e) => e.id !== draft.id)
-                  setSelected(next?.id ?? null)
-                  setDraft(next ? toDraft(next) : null)
-                  setDirty(false)
-                  setConfirmDelete(false)
-                }}
-              >
-                <Trash2 /> {confirmDelete ? '再点一次删除（绳上的实例也会取下）' : '删除'}
-              </Button>
+            {builtin ? (
+              // 内置案例扩展删不掉：改过的可以恢复成程序自带的版本
+              (current?.customized || dirty) && (
+                <Button
+                  variant={confirmDelete ? 'destructive' : 'ghost'}
+                  onClick={() => {
+                    if (!confirmDelete) {
+                      setConfirmDelete(true)
+                      return
+                    }
+                    services.removeExtension(draft.id!)
+                    const original = services.builtinExtensions().find((e) => e.id === draft.id)
+                    if (original) setDraft(toDraft({ ...original, builtin: true }))
+                    setDirty(false)
+                    setConfirmDelete(false)
+                  }}
+                >
+                  <RotateCcw /> {confirmDelete ? '再点一次，丢掉改动恢复默认' : '恢复默认'}
+                </Button>
+              )
+            ) : (
+              draft.id && (
+                <Button
+                  variant={confirmDelete ? 'destructive' : 'ghost'}
+                  onClick={() => {
+                    if (!confirmDelete) {
+                      setConfirmDelete(true)
+                      return
+                    }
+                    services.removeExtension(draft.id!)
+                    const next = extensions.find((e) => e.id !== draft.id)
+                    setSelected(next?.id ?? null)
+                    setDraft(next ? toDraft(next) : null)
+                    setDirty(false)
+                    setConfirmDelete(false)
+                  }}
+                >
+                  <Trash2 /> {confirmDelete ? '再点一次删除（绳上的实例也会取下）' : '删除'}
+                </Button>
+              )
             )}
           </div>
         </section>

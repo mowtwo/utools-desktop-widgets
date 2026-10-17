@@ -3,12 +3,11 @@ import { BookOpen, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { BUILTIN_EXTENSIONS } from './builtins'
 import { aiSkill, CTX_MEMBERS, ENTRY, RULES, typeDeclarations, UI_ELEMENTS } from './spec'
 
 /** 给 AI 的 skill 文档：内置扩展作为示例 */
 export function widgetSkill() {
-  return aiSkill(BUILTIN_EXTENSIONS.map((e) => ({ name: e.name, code: e.code, settings: e.settings })))
+  return aiSkill((window.services?.builtinExtensions() ?? []).map((e) => ({ name: e.name, code: e.code, settings: e.settings })))
 }
 
 function Code({ children }: { children: string }) {

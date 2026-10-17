@@ -10,7 +10,10 @@ export interface WidgetExtension {
   height: number
   /** 传给脚本的 ctx.settings，JSON 字符串 */
   settings: string
+  /** 内置案例扩展：跟着程序走，删不掉 */
   builtin?: boolean
+  /** 内置扩展被用户改过（数据库里存着改过的版本） */
+  customized?: boolean
   updatedAt?: number
 }
 

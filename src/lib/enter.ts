@@ -1,5 +1,3 @@
-import { BUILTIN_EXTENSIONS } from '@/widget/builtins'
-
 const IMAGE_DATA = /^data:image\//
 
 /** 设置页监听它：聚焦到待办输入框 */
@@ -10,7 +8,6 @@ export async function handlePluginEnter(action: UToolsPluginEnterAction) {
   const services = window.services
   if (!services) return
   services.start()
-  services.seedExtensions(BUILTIN_EXTENSIONS)
 
   switch (action.code) {
     case 'toggle': {

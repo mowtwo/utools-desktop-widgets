@@ -7,6 +7,7 @@ const { pathToFileURL } = require('node:url')
 const { randomUUID } = require('node:crypto')
 const { ipcRenderer, clipboard } = require('electron')
 const caps = require('./capabilities.js')
+const BUILTIN_EXTENSIONS = require('./builtin_extensions.js')
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'svg']
 const CONTENT_TYPES = ['image', 'note', 'file']
@@ -173,17 +174,44 @@ function loadState() {
 let state = loadState()
 const listeners = new Set()
 
+const builtinOf = (id) => BUILTIN_EXTENSIONS.find((b) => b.id === id)
+
+/**
+ * 旧版本首次启动时把内置扩展抄了一份进数据库：没改过的删掉，改过的标成 customized 继续覆盖内置版本。
+ * 只看 builtin 且没有 customized 标记的文档，所以只会动一次
+ */
+function migrateSeededBuiltins() {
+  for (const d of utools.db.allDocs(EXT_PREFIX)) {
+    const b = d.builtin && !d.customized && builtinOf(d._id.slice(EXT_PREFIX.length))
+    if (!b) continue
+    const untouched = String(d.code).trim() === b.code.trim() || !String(d.code).includes('defineWidget')
+    if (untouched) utools.db.remove(d)
+    else utools.db.put({ ...d, customized: true })
+    log('builtin-migrated', { id: b.id, untouched })
+  }
+}
+
+/** 内置扩展（改过的用数据库里的版本）在前，用户自己的扩展在后 */
 function loadExtensions() {
-  return utools.db.allDocs(EXT_PREFIX).map((d) => ({
+  const docs = utools.db.allDocs(EXT_PREFIX).map((d) => ({
     id: d._id.slice(EXT_PREFIX.length),
     name: d.name,
     code: d.code,
     width: d.width,
     height: d.height,
     settings: d.settings,
-    builtin: !!d.builtin,
+    builtin: !!builtinOf(d._id.slice(EXT_PREFIX.length)),
+    customized: !!d.customized,
     updatedAt: d.updatedAt,
   }))
+  const builtins = BUILTIN_EXTENSIONS.map((b) => docs.find((d) => d.id === b.id && d.customized) || { ...b, builtin: true })
+  return [...builtins, ...docs.filter((d) => !builtinOf(d.id))]
+}
+
+try {
+  migrateSeededBuiltins()
+} catch (err) {
+  log('builtin-migrate-failed', String(err && err.message))
 }
 
 let extensions = loadExtensions()
@@ -1102,33 +1130,17 @@ window.services = {
   setRenderAnchor: (renderAnchor) => update({ renderAnchor }),
   setDisplay: (displayId) => update({ displayId }),
   setMultiLine: (multiLine) => update({ multiLine }),
-  /** 首次启动时写入内置扩展；数据库里已有同名文档（比如别的设备同步过来）就跳过 */
-  seedExtensions(builtins) {
-    let changed = false
-    for (const ext of builtins) {
-      const existing = utools.db.get(EXT_PREFIX + ext.id)
-      if (!existing && !state.seeded) {
-        utools.db.put({ _id: EXT_PREFIX + ext.id, ...extDoc(ext), builtin: true })
-        changed = true
-      } else if (existing && existing.builtin && !String(existing.code).includes('defineWidget')) {
-        // 旧版的内置扩展（直接写 HTML 的写法）升级成新写法；用户自己的扩展不动
-        utools.db.put({ _id: existing._id, _rev: existing._rev, ...extDoc(ext), builtin: true })
-        log('builtin-upgraded', { id: ext.id })
-        changed = true
-      }
-    }
-    if (!changed && state.seeded) return
-    extensions = loadExtensions()
-    if (state.seeded) emit()
-    else update({ seeded: true })
-  },
+  /** 内置案例扩展（给 AI 写挂件时当示例） */
+  builtinExtensions: () => BUILTIN_EXTENSIONS,
   /** 新建或保存扩展，返回扩展 id */
   saveExtension(ext) {
     const id = ext.id || randomUUID()
     const existing = utools.db.get(EXT_PREFIX + id)
     const result = utools.db.put({
       _id: EXT_PREFIX + id,
-      ...(existing ? { _rev: existing._rev, builtin: existing.builtin } : {}),
+      ...(existing ? { _rev: existing._rev } : {}),
+      // 改内置扩展：存一份覆盖内置版本
+      ...(builtinOf(id) ? { builtin: true, customized: true } : {}),
       ...extDoc(ext),
     })
     if (result.error) throw new Error(result.message || '保存失败')
@@ -1136,9 +1148,15 @@ window.services = {
     emit()
     return id
   },
-  /** 删除扩展，同时取下绳上它的所有实例 */
+  /** 删除扩展，同时取下绳上它的所有实例；内置扩展删不掉，只是删掉改过的那份、恢复默认 */
   removeExtension(id) {
-    utools.db.remove(EXT_PREFIX + id)
+    const doc = utools.db.get(EXT_PREFIX + id)
+    if (doc) utools.db.remove(doc)
+    if (builtinOf(id)) {
+      extensions = loadExtensions()
+      emit()
+      return
+    }
     extensions = loadExtensions()
     const { [id]: _removed, ...extErrors } = state.extErrors
     state = { ...state, extErrors }

@@ -34,7 +34,7 @@ interface Window {
     setRug(patch: Partial<import('./line').RugSettings>): void
     resetRug(): void
     editRug(): void
-    seedExtensions(builtins: import('@/widget/protocol').WidgetExtension[]): void
+    builtinExtensions(): import('@/widget/protocol').WidgetExtension[]
     saveExtension(ext: Omit<import('@/widget/protocol').WidgetExtension, 'id'> & { id?: string }): string
     removeExtension(id: string): void
     hangWidget(ext: string): void
