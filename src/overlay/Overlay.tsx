@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { LineItem, OverlayPayload } from '@/types/line'
 import type { HandleContent, LineOp } from '@/widget/protocol'
 import { applyTheme } from '@/lib/theme'
-import { CARD_WIDTH, PANEL_HEIGHT, PIN_ABOVE, tiltOf } from './layout'
+import { Cord } from './Cord'
+import { ALL, groupsOf, inGroup } from './groups'
+import { CARD_WIDTH, PANEL_HEIGHT, PIN_ABOVE, ROPE_TOP, tiltOf } from './layout'
 import { Pegged } from './Pegged'
 import { Pendulum, Rope, type Load } from './physics'
 import { drawRope } from './Rope'
@@ -32,6 +34,8 @@ const X_MAX = 0.96
 const NOTCH_HALF = 130
 /** 小把手的水平位置（占屏幕宽度的比例） */
 const HANDLE_X = { left: 0.25, center: 0.5, right: 0.75 }
+/** 拉绳坠子离屏幕边缘多远（px）：绳子落在两端的淡出区里，不和挂着的东西抢位置 */
+const CORD_INSET = 16
 
 /** 每种东西压在绳子上的分量（相对一个绳节） */
 /** 动画循环连续跑这么久还没静止，就记一条诊断日志（ms） */
@@ -81,6 +85,9 @@ export default function Overlay() {
   const showToast = useCallback((text: string) => {
     if (text) setToast({ key: Date.now(), text })
   }, [])
+  /** 拉绳选中的自动分组：只在这次运行里有效 */
+  const [group, setGroup] = useState(ALL)
+  const groupRef = useRef(group)
   const interactive = useRef(false)
   const revealedRef = useRef(false)
   const peekUntil = useRef(0)
@@ -311,30 +318,54 @@ export default function Overlay() {
     window.overlay?.ready()
   }, [reveal])
 
-  // 新状态：同步绳子宽度、挂件和重量；新挂上的东西让绳子弹一下
+  /** 拉绳的分组：全部 + 绳上现有的类型 */
+  const groups = useMemo(() => {
+    const list = payload ? groupsOf(payload.items) : []
+    return [{ key: ALL, label: '全部', count: payload?.items.filter((it) => it.type !== 'clip').length ?? 0 }, ...list]
+  }, [payload])
+
+  // 选中的组空了就回到全部；挂上了不在当前组的新东西，也回到全部，免得新东西看不见
+  const lastItems = useRef<LineItem[] | null>(null)
+  useEffect(() => {
+    if (!payload) return
+    const prev = lastItems.current
+    lastItems.current = payload.items
+    const g = groupRef.current
+    if (g === ALL) return
+    const old = new Set((prev ?? []).map((it) => it.id))
+    if (!groups.some((x) => x.key === g) || payload.items.some((it) => !old.has(it.id) && !inGroup(g, it))) setGroup(ALL)
+  }, [payload, groups])
+  useEffect(() => {
+    groupRef.current = group
+  }, [group])
+
+  /** 当前组里真正挂在绳子上的东西 */
+  const visible = useMemo(() => (payload ? payload.items.filter((it) => inGroup(group, it)) : []), [payload, group])
+
+  // 新状态：同步绳子宽度、挂件和重量；新挂上（或换组后新出现）的东西让绳子弹一下
   useEffect(() => {
     if (!payload) return
     const width = payload.bounds.width
     if (!rope.current || rope.current.width !== width) rope.current = new Rope(width)
     const r = rope.current
     const known = new Set(items.current.map((it) => it.id))
-    for (const it of payload.items) {
+    for (const it of visible) {
       if (known.has(it.id)) continue
       const p = new Pendulum()
       p.angle = 0.28
       pendulums.current.set(it.id, p)
       r.pluck(it.x * width, 260)
     }
-    const ids = new Set(payload.items.map((it) => it.id))
+    const ids = new Set(visible.map((it) => it.id))
     for (const id of pendulums.current.keys()) if (!ids.has(id)) pendulums.current.delete(id)
     // 主界面确认了新位置，就不再需要本地覆盖
-    for (const it of payload.items) {
+    for (const it of visible) {
       const o = overrides.current.get(it.id)
       if (o !== undefined && drag.current?.id !== it.id && Math.abs(o - it.x * width) < 1) overrides.current.delete(it.id)
     }
-    items.current = payload.items
+    items.current = visible
     wake()
-  }, [payload, wake])
+  }, [payload, visible, wake])
 
   useEffect(
     () => () => {
@@ -488,6 +519,14 @@ export default function Overlay() {
     [setInteractive, wake],
   )
 
+  /** 拉绳：前后换组，在小把手位置提示换到了哪组 */
+  const onCordPull = (step: 1 | -1) => {
+    const i = Math.max(0, groups.findIndex((g) => g.key === group))
+    const next = groups[(i + step + groups.length) % groups.length]
+    setGroup(next.key)
+    showToast(`${next.label} · ${next.count} 件`)
+  }
+
   if (!payload) return null
   if (payload.role === 'ping') {
     return (
@@ -529,12 +568,30 @@ export default function Overlay() {
         }}
       >
         <canvas ref={canvasRef} className="pointer-events-none absolute top-0 left-0" style={{ width, height: PANEL_HEIGHT }} />
+        {/* 拉绳跟着小把手：把手在左边就垂在左端，否则在右端；绳上至少有两种东西才出现 */}
+        {groups.length > 2 && (
+          <div
+            className="absolute z-20"
+            style={{ top: ROPE_TOP, ...(payload.handle === 'left' ? { left: CORD_INSET } : { right: CORD_INSET }) }}
+          >
+            <Cord
+              groups={groups}
+              active={group}
+              side={payload.handle === 'left' ? 'left' : 'right'}
+              onPull={onCordPull}
+              onReset={() => {
+                setGroup(ALL)
+                showToast('全部')
+              }}
+            />
+          </div>
+        )}
         {payload.items.length === 0 && (
           <div className="pointer-events-none absolute top-[44px] left-1/2 -translate-x-1/2 rounded-full border border-white/50 bg-background/85 px-3 py-1.5 text-xs font-medium text-muted-foreground shadow dark:border-white/15">
             点绳子加个夹子，或截图、在 uTools 里选「挂到晾衣绳」
           </div>
         )}
-        {payload.items.map((item) => (
+        {visible.map((item) => (
           <Pegged
             key={item.id}
             item={item}
