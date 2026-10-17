@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -5,12 +7,21 @@ import whatevertools from '@whatevertools/vite'
 import { defineConfig } from 'vite'
 import pkg from './package.json' with { type: 'json' }
 
+const require = createRequire(import.meta.url)
+
 // uTools 以本地文件方式加载 dist/*.html，资源路径必须是相对路径
 export default defineConfig({
   base: './',
   // 构建时间写进代码，日志里据此判断测的是哪次构建
   define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()), __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [
+    // preload 不经过打包：把 @whatevertools/shared 的单文件 CommonJS 产物原样拷进 dist，preload 里 require('./wt-shared.js')
+    {
+      name: 'wt-shared',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'wt-shared.js', source: fs.readFileSync(require.resolve('@whatevertools/shared'), 'utf8').replace(/\n\/\/# sourceMappingURL=.*\s*$/, '\n') })
+      },
+    },
     react(),
     tailwindcss(),
     // 构建时写 dist/whatevertools.json：给 whatevertools 兼容层（Electron 独立应用、网页版）用的身份、权限说明和独立应用配置。

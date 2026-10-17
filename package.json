@@ -1,7 +1,7 @@
 {
   "name": "utools-desktop-widgets",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -40,6 +40,7 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "@whatevertools/cli": "^0.2.2",
+    "@whatevertools/shared": "^0.2.3",
     "@whatevertools/utools": "^0.2.1",
     "@whatevertools/vite": "^0.2.2",
     "electron-builder": "^26.15.3",

@@ -11,7 +11,7 @@ const CURSOR_POLL_MS = 60
 /** 这个悬浮层所在的屏幕：每块屏幕一个悬浮层，发给主界面的消息都带上它 */
 const DISPLAY = Number(new URLSearchParams(location.search).get('display'))
 const send = (channel, ...args) => utools.sendToParent(channel, DISPLAY, ...args)
-const logFile = path.join(utools.getPluginLocalDataPath(), 'debug.log')
+const logFile = path.join(require('./capabilities.js').dataDir(), 'debug.log')
 
 /** 悬浮层自己写日志：主界面被结束时也能留下记录 */
 function log(event, detail) {

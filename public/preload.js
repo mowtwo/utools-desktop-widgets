@@ -8,7 +8,7 @@ try {
   try {
     const fs = require('node:fs')
     const path = require('node:path')
-    const dir = utools.getPluginLocalDataPath()
+    const dir = require('./capabilities.js').dataDir()
     fs.mkdirSync(dir, { recursive: true })
     fs.appendFileSync(path.join(dir, 'debug.log'), `${new Date().toISOString()} main preload-failed ${JSON.stringify({ message, platform: process.platform, versions: process.versions })}\n`)
   } catch {}

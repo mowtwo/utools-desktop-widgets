@@ -57,6 +57,8 @@ interface Window {
     peek(): void
     openOverlayDevTools(): void
     clearExtErrors(ext: string): void
+    /** 当前 uTools 支不支持定时任务（旧版没有） */
+    keepAliveSupported(): boolean
     hasKeepAlive(): boolean
     requestKeepAlive(): Promise<boolean>
     removeKeepAlive(): void

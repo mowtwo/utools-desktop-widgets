@@ -6,6 +6,7 @@ const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { randomUUID } = require('node:crypto')
 const { ipcRenderer, clipboard } = require('electron')
+const caps = require('./capabilities.js')
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'svg']
 const CONTENT_TYPES = ['image', 'note', 'file']
@@ -16,7 +17,7 @@ const SPACING = 174
 const X_MIN = 0.04
 const X_MAX = 0.96
 
-const dataDir = utools.getPluginLocalDataPath()
+const dataDir = caps.dataDir()
 const imageDir = path.join(dataDir, 'images')
 const stateFile = path.join(dataDir, 'state.json')
 const logFile = path.join(dataDir, 'debug.log')
@@ -34,6 +35,30 @@ function log(event, detail) {
     fs.appendFileSync(logFile, line)
   } catch {}
 }
+
+/**
+ * 旧版 uTools 没有插件应用本地数据目录，数据存在退回目录里（见 capabilities.js）；
+ * 升级后第一次启动、新目录还没有数据时搬过来。state 里图片存的是绝对路径，一起改写。
+ */
+function migrateDataDir() {
+  if (caps.dataDir.support() !== 'getPluginLocalDataPath' || fs.existsSync(stateFile)) return
+  for (const from of caps.fallbackDataDirs()) {
+    const oldState = path.join(from, 'state.json')
+    if (from === dataDir || !fs.existsSync(oldState)) continue
+    try {
+      fs.mkdirSync(dataDir, { recursive: true })
+      fs.cpSync(from, dataDir, { recursive: true, force: false })
+      const text = fs.readFileSync(oldState, 'utf-8')
+      fs.writeFileSync(stateFile, text.split(JSON.stringify(from).slice(1, -1)).join(JSON.stringify(dataDir).slice(1, -1)), 'utf-8')
+      log('data-migrated', { from })
+    } catch (err) {
+      log('data-migrate-failed', { from, message: String(err && err.message) })
+    }
+    return
+  }
+}
+migrateDataDir()
+log('capabilities', caps.report().map((r) => `${r.name}=${r.using}`))
 
 const defaultState = {
   enabled: true,
@@ -893,7 +918,7 @@ ipcRenderer.on('overlay:focus', (_e, from) => {
 ipcRenderer.on('overlay:ping-capture', async (_e, from, reqId, rect) => {
   try {
     const display = utools.getAllDisplays().find((d) => d.id === from) || utools.getDisplayMatching(rect)
-    const [shot] = await utools.captureDisplay({ displayId: display.id })
+    const [shot] = await caps.captureDisplay({ displayId: display.id })
     const img = shot.image
     const size = img.getSize()
     const scale = size.width / display.bounds.width
@@ -1004,7 +1029,7 @@ ipcRenderer.on('rug:hide', (_e, from) => {
 })
 
 // 守护任务触发：插件刚被拉起来时直接重开悬浮层，不依赖设置页
-utools.onScheduleTrigger(({ code }) => {
+caps.onScheduleTrigger(({ code }) => {
   if (code !== KEEPALIVE) return
   if (!mainOverlayShown()) log('keepalive-restore')
   window.services.start()
@@ -1061,7 +1086,7 @@ window.services = {
   resetRug() {
     eachRug('window.rugReset && window.rugReset()')
   },
-  pingHotKey: () => utools.getCmdHotKey('发信号'),
+  pingHotKey: () => caps.getCmdHotKey('发信号') ?? null,
   setPingHotKey: () => utools.redirectHotKeySetting('发信号'),
   /** 把晾衣绳拉下来一会儿 */
   peek() {
@@ -1160,23 +1185,25 @@ window.services = {
     const { [ext]: _removed, ...rest } = state.extErrors
     update({ extErrors: rest })
   },
+  /** 当前 uTools 支不支持定时任务（旧版没有，设置页隐藏「保持显示」） */
+  keepAliveSupported: () => caps.requestSchedule.support() !== false,
   /** 守护任务是否已创建（用户在 uTools 里同意过） */
   hasKeepAlive() {
     try {
-      return utools.getSchedules().some((s) => s.code === KEEPALIVE)
+      return caps.getSchedules().some((s) => s.code === KEEPALIVE)
     } catch {
       return false
     }
   },
   /** 申请每分钟触发一次的守护任务，最终是否创建由用户决定 */
   async requestKeepAlive() {
-    await utools.requestSchedule({ code: KEEPALIVE, label: '晾衣绳：被结束后自动恢复', trigger: { cron: '* * * * *' } })
+    await caps.requestSchedule({ code: KEEPALIVE, label: '晾衣绳：被结束后自动恢复', trigger: { cron: '* * * * *' } })
     log('keepalive-request', { created: window.services.hasKeepAlive() })
     return window.services.hasKeepAlive()
   },
   removeKeepAlive() {
     try {
-      utools.removeSchedule(KEEPALIVE)
+      caps.removeSchedule(KEEPALIVE)
     } catch {}
     log('keepalive-remove')
   },

@@ -196,22 +196,24 @@ function LinePage({ line }: { line: LineState }) {
         <Row icon={<Shirt />} title="晾衣绳" hint="挂在屏幕顶部，除了挂着的东西都能点穿">
           <Switch checked={line.enabled} onCheckedChange={services.setEnabled} />
         </Row>
-        <Row
-          icon={<HeartPulse />}
-          title="保持显示"
-          hint="uTools 会把后台的插件结束，晾衣绳随之消失；开启后每分钟检查一次，被结束就自动恢复"
-        >
-          <Switch
-            checked={keepAlive}
-            onCheckedChange={async (on) => {
-              if (on) setKeepAlive(await services.requestKeepAlive())
-              else {
-                services.removeKeepAlive()
-                setKeepAlive(false)
-              }
-            }}
-          />
-        </Row>
+        {services.keepAliveSupported() && (
+          <Row
+            icon={<HeartPulse />}
+            title="保持显示"
+            hint="uTools 会把后台的插件结束，晾衣绳随之消失；开启后每分钟检查一次，被结束就自动恢复"
+          >
+            <Switch
+              checked={keepAlive}
+              onCheckedChange={async (on) => {
+                if (on) setKeepAlive(await services.requestKeepAlive())
+                else {
+                  services.removeKeepAlive()
+                  setKeepAlive(false)
+                }
+              }}
+            />
+          </Row>
+        )}
         {displays.length > 1 && (
           <Row
             icon={<MonitorSmartphone />}

@@ -81,6 +81,9 @@ importers:
       '@whatevertools/cli':
         specifier: ^0.2.2
         version: 0.2.2(electron@44.7.0)
+      '@whatevertools/shared':
+        specifier: ^0.2.3
+        version: 0.2.3
       '@whatevertools/utools':
         specifier: ^0.2.1
         version: 0.2.1(@whatevertools/api@0.2.1)
@@ -1851,6 +1854,9 @@ packages:
 
   '@whatevertools/fs-virtual@0.2.1':
     resolution: {integrity: sha512-NVWXzxEf3f1LcgZ0ZR25R5n9LpGr0OuuMGFexUYoEoMPDO5m/5AapBfTit8HaPhUU7Ivv0VRBT8dpyftAeXZlw==}
+
+  '@whatevertools/shared@0.2.3':
+    resolution: {integrity: sha512-a7M3/NJ1JSFk8r0uS+y5jjyISSFeqxZEgE/pBE33KJ0mqFqwiJfs8MRO5LU93oPVPK5xkH6SAMjIDOnZfn6pWQ==}
 
   '@whatevertools/sharp-canvas@0.2.1':
     resolution: {integrity: sha512-gTF8V0PfK5eqn+Xdh4ilbh3l8yvC/w4Eli3u+ELE8ObbYjBK4KznYUbBz+VFQEg91SVhUFBNcXpGX6Xncj/R0g==}
@@ -5735,6 +5741,8 @@ snapshots:
   '@whatevertools/fs-virtual@0.2.1':
     dependencies:
       '@whatevertools/core': 0.2.1
+
+  '@whatevertools/shared@0.2.3': {}
 
   '@whatevertools/sharp-canvas@0.2.1': {}
 

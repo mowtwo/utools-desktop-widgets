@@ -2,7 +2,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const logFile = path.join(utools.getPluginLocalDataPath(), 'debug.log')
+const logFile = path.join(require('./capabilities.js').dataDir(), 'debug.log')
 
 function log(event, detail) {
   try {
